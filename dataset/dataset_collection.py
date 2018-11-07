@@ -1,9 +1,14 @@
 import locale
+from pprint import pprint
 from typing import Optional, List, Dict, Any
 
 import pytz
 import twitter
 import datetime
+
+from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
+    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY
+
 consumer_id_key = 'NC19WDNaMoEaaV9s8nadVUvBI'
 consumer_secret_key = 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3'
 access_token_key = '1058944938887409664-402KNxXTgNNhMoAK3pmAUziB3Fhxzj'
@@ -26,6 +31,15 @@ class TwitterApi():
 
     def find_posts_twitter(self, api, screen_name: str, pool_amount: int, since: datetime,
                            until: datetime = datetime.datetime.now(datetime.timezone.utc)) -> List[Dict[str, Any]]:
+        """
+        Finds user's posts and sorts them b amount of likes
+        :param api: instance of twitter api
+        :param screen_name: twitter screen name of a user
+        :param pool_amount: amount of posts to retrieve (if 0 we retrieve posts by time period [since; until])
+        :param since: datetime of oldest post (is used only if pool amount is not mentioned)
+        :param until: datetime of latest post (is used only if pool amount is not mentioned)
+        :return: list of post dictionaries
+        """
 
         if not api:
 
@@ -89,6 +103,65 @@ class TwitterApi():
 
         return result
 
+    def find_retweets_twitter(self, posts: List[Dict], screen_name: str)->List[Dict[str, Any]]:
+        """
+        Finds retweets from given user's screen_namelist in given list of posts
+        :param posts: list of posts in some user timeline
+        :param screen_name: user that was an author of tweet that was retweeted
+        :return: list of retweet dictionaries
+        """
+        retweets = []
+        for post in posts:
+            if RETWEETED_STATUS_KEY in post:
+                retweet_info = post.get(RETWEETED_STATUS_KEY, {})
+                retweet_author = retweet_info.get(USER_KEY, {})
+                author_screen_name = retweet_author.get(SCREEN_NAME_KEY, '')
+                if author_screen_name == screen_name:
+                    retweets.append(post)
+        return retweets
+
+    def find_mentions_twitter(self, posts: List[Dict], screen_name: str)->List[Dict[str, Any]]:
+        """
+
+        :param posts:
+        :param screen_name:
+        :return:
+        """
+    def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str)-> Dict[str, Any]:
+        """
+
+        :param posts:
+        :param screen_name:
+        :return:
+        """
+        interactions = {}
+        retweets = []
+        mentions = []
+        comments = []
+        for post in posts:
+            if RETWEETED_STATUS_KEY in post:
+                retweet_info = post.get(RETWEETED_STATUS_KEY, {})
+                retweet_author = retweet_info.get(USER_KEY, {})
+                author_screen_name = retweet_author.get(SCREEN_NAME_KEY, '')
+                if author_screen_name == screen_name:
+                    retweets.append(post)
+                    continue # not to add retweets to mentions
+            if USER_MENTIONS_KEY in post:
+                if IN_REPLY_TO_SCREEN_NAME_KEY in post:
+                    reply_screen_name = post.get(IN_REPLY_TO_SCREEN_NAME_KEY, '')
+                    if reply_screen_name == screen_name:
+                        comments.append(post)
+                else:
+                    users_mentioned = post.get(USER_MENTIONS_KEY, [])
+                    for user in users_mentioned:
+                        user_screen_name = user.get(SCREEN_NAME_KEY, '')
+                        if user_screen_name == screen_name:
+                            mentions.append(post)
+
+        return {RETWEETS_KEY: retweets,
+                MENTIONS_KEY: mentions,
+                COMMENTS_KEY: comments}
+
     def get_tweet_date(self, date: str):
         try:
             locale.setlocale(locale.LC_TIME, 'en_US.UTF-8')
@@ -114,5 +187,7 @@ class TwitterApi():
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
-    posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='BeardedRain', pool_amount=20, since=None)
-    print(posts)
+    posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='', pool_amount=50, since=None)
+    # pprint(posts)
+    interactions = twitterSearch.find_user_interactions_in_posts(posts, '')
+    pprint(interactions)
