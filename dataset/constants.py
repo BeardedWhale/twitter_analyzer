@@ -1,0 +1,8 @@
+RETWEETED_STATUS_KEY = 'retweeted_status'
+USER_KEY = 'user'
+SCREEN_NAME_KEY = 'screen_name'
+USER_MENTIONS_KEY = 'user_mentions'
+IN_REPLY_TO_SCREEN_NAME_KEY = 'in_reply_to_screen_name'
+RETWEETS_KEY = 'retweets'
+COMMENTS_KEY = 'comments'
+MENTIONS_KEY = 'mentions'
