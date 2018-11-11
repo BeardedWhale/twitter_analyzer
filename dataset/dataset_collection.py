@@ -1,7 +1,7 @@
 import locale
-from pprint import pprint
-from typing import Optional, List, Dict, Any
-
+from typing import List, Dict, Any
+from watson_developer_cloud import NaturalLanguageUnderstandingV1
+from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions
 import pytz
 import twitter
 import datetime
@@ -15,6 +15,7 @@ access_token_key = '1058944938887409664-402KNxXTgNNhMoAK3pmAUziB3Fhxzj'
 access_token_secret = 'vVxGZQdN9ubMK1EnxZGx62ZsxVqwFQiwDZmXmEMfPYSKj'
 api = None
 
+
 class TwitterApi():
 
     def get_api_instance(self):
@@ -22,9 +23,9 @@ class TwitterApi():
         if api:
             return api
         api = twitter.Api(consumer_key=consumer_id_key,
-                              consumer_secret=consumer_secret_key,
-                              access_token_key=access_token_key,
-                              access_token_secret=access_token_secret)
+                          consumer_secret=consumer_secret_key,
+                          access_token_key=access_token_key,
+                          access_token_secret=access_token_secret)
         api.VerifyCredentials()
         return api
 
@@ -41,13 +42,12 @@ class TwitterApi():
         """
 
         if not api:
-
             return []
         if not since:
             since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
         posts = []
         if pool_amount is None or pool_amount == 0:
-            pool_amount =20
+            pool_amount = 20
 
         try:
             if since and since > datetime.datetime.now(datetime.timezone.utc):
@@ -102,7 +102,7 @@ class TwitterApi():
 
         return result
 
-    def find_retweets_twitter(self, posts: List[Dict], screen_name: str)->List[Dict[str, Any]]:
+    def find_retweets_twitter(self, posts: List[Dict], screen_name: str) -> List[Dict[str, Any]]:
         """
         Finds retweets from given user's screen_namelist in given list of posts
         :param posts: list of posts in some user timeline
@@ -119,14 +119,15 @@ class TwitterApi():
                     retweets.append(post)
         return retweets
 
-    def find_mentions_twitter(self, posts: List[Dict], screen_name: str)->List[Dict[str, Any]]:
+    def find_mentions_twitter(self, posts: List[Dict], screen_name: str) -> List[Dict[str, Any]]:
         """
 
         :param posts:
         :param screen_name:
         :return:
         """
-    def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str)-> Dict[str, Any]:
+
+    def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str) -> Dict[str, Any]:
         """
 
         :param posts:
@@ -144,7 +145,7 @@ class TwitterApi():
                 author_screen_name = retweet_author.get(SCREEN_NAME_KEY, '')
                 if author_screen_name == screen_name:
                     retweets.append(post)
-                    continue # not to add retweets to mentions
+                    continue  # not to add retweets to mentions
             if USER_MENTIONS_KEY in post:
                 if IN_REPLY_TO_SCREEN_NAME_KEY in post:
                     reply_screen_name = post.get(IN_REPLY_TO_SCREEN_NAME_KEY, '')
@@ -184,14 +185,22 @@ class TwitterApi():
             raise ValueError('Datetime should not be naive and should be in UTC (pytz.UTC or datetime.timezone.utc)')
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
 
-    # calculates how many times user with screen_name liked user with screen_name2
     def get_favorites_count(self, api, screen_name, screen_name2: str, since: datetime,
                             until: datetime = datetime.datetime.now(datetime.timezone.utc)):
+        """
+        :param api:
+        :param screen_name:
+        :param screen_name2:
+        :param since:
+        :param until:
+        :return: integer number indicating how many times screen_name liked screen name2
+                -1 on error
+        """
         if not api:
             return -1
 
         try:
-            since, until = twitterSearch.parse_time_interval(since, until)
+            since, until = self.parse_time_interval(since, until)
             if since and until and since > until:
                 return -1
 
@@ -202,7 +211,6 @@ class TwitterApi():
                 favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
                 for fav in favorites:
                     post = fav.AsDict()
-                    print(post['user']['screen_name'])
                     last_id = post['id_str']
                     if ((not since or since <= self.get_tweet_date(post['created_at'])) and
                             (not until or until > self.get_tweet_date(post['created_at']))):
@@ -228,12 +236,157 @@ class TwitterApi():
 
         return since, until
 
+    def get_followers_similarity(self, api, screen_name, screen_name2):
+        """
+        Calculates followers similarity between two users
+        :param api:
+        :param screen_name:
+        :param screen_name2:
+        :return: percentage(number > 0 and < 1) of common followers w.r.t screen_name
+                -1 on error
+        """
+        if not api:
+            return -1
+        try:
+            followers = api.GetFollowers(screen_name=screen_name)
+            followers2 = api.GetFollowers(screen_name=screen_name2)
+
+            count = 0
+            if not len(followers2) or not len(followers):
+                return 0
+            for i in followers:
+                for j in followers2:
+                    if i == j:
+                        count += 1
+            print(count)
+            return count / len(followers)
+
+        except Exception as e:
+            print(f'Exception occured: {e}')
+        return -1
+
+    def get_hashtags_similarity(self, posts1, posts2):
+        """
+        Calculates similarity of posts of two users based on hashtags
+        :param posts1: list of posts of 1st user
+        :param posts2: list of posts of user to compare with
+        :return: percentage(number > 0 and < 1) of common hashtags w.r.t the 1st user
+        """
+        tags1 = []
+        for post in posts1:
+            for tag in post['hashtags']:
+                tags1.append(tag)
+        tags2 = []
+        for post in posts2:
+            for tag in post['hashtags']:
+                tags2.append(tag)
+
+        if not len(tags1) or not len(tags2):
+            return 0
+        count = 0
+        for tag1 in tags1:
+            for tag2 in tags2:
+                if tag1 == tag2:
+                    count += 1
+        return count / len(tags1)
+
+    def get_natural_language_understanding(self, version):
+        n = NaturalLanguageUnderstandingV1(
+            version=version,
+            iam_apikey='SGjJgUAGXQEdbXiRe27u2V4hmeMIrEESo0vcXrfCunLL',
+            url='https://gateway-wdc.watsonplatform.net/natural-language-understanding/api'
+        )
+        return n
+
+    def get_keywords(self, posts):
+        """
+        Retreives at most 3 keywords from given posts
+        :param posts: list of posts to analyze
+        :return: list of keywords
+        """
+        if not len(posts):
+            return []
+        natural_language_understanding = self.get_natural_language_understanding('2018-09-21')
+        keywords = []
+        for post in posts:
+            response = natural_language_understanding.analyze(
+                text=post['text'], features=Features(
+                    keywords=KeywordsOptions(limit=3))).get_result()
+            for word in response['keywords']:
+                keywords.append(word['text'])
+        return keywords
+
+    def get_keywords_similarity(self, posts1, posts2):
+        """
+        Calculates users' similarity of posts based on keywords from their posts
+        :param posts1: list of posts of the 1st user
+        :param posts2: list of posts of the user to compare with
+        :return: percentage(number > 0 and < 1) of common keywords w.r.t 1st user
+        """
+        keywords1 = self.get_keywords(posts1)
+        keywords2 = self.get_keywords(posts2)
+        print(keywords1)
+        print(keywords2)
+        if not len(keywords1) or not len(keywords2):
+            return 0
+        count = 0
+        for word1 in keywords1:
+            for word2 in keywords2:
+                if word1 == word2:
+                    count += 1
+        return count / len(keywords1)
+
+    def get_categories(self, posts):
+        """
+        :param posts: list of posts to analyze
+        :return: list of unique categories
+        """
+        if not len(posts):
+            return []
+        natural_language_understanding = self.get_natural_language_understanding('2018-03-16')
+        categories = []
+        for post in posts:
+            try:
+                response = natural_language_understanding.analyze(
+                    text=post['text'],
+                    features=Features(categories=CategoriesOptions())).get_result()
+                for category in response['categories']:
+                    for c in category['label'].split('/'):
+                        if c == '' or c in categories:
+                            continue
+                        categories.append(c)
+            except Exception:
+                continue
+        return categories
+
+    def get_categories_similarity(self, posts1, posts2):
+        """
+         Calculates users' similarity of posts based on categories from their posts
+        :param posts1: list of posts of the 1st user
+        :param posts2: list of posts of the user to compare with
+        :return: percentage(number > 0 and < 1) of common categories w.r.t to the 1st user
+        """
+        categories1 = self.get_categories(posts1)
+        print(categories1)
+        categories2 = self.get_categories(posts2)
+        print(categories2)
+        if not len(categories1) or not len(categories2):
+            return 0
+        count = 0
+        for category1 in categories1:
+            for category2 in categories2:
+                if category1 == category2:
+                    count += 1
+        return count / len(categories1)
+
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
-    posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='BeardedRain',
-                                             pool_amount=20, since=None)
-    print(posts)
-    count = twitterSearch.get_favorites_count(api=twitterSearch.get_api_instance(), screen_name='BeardedRain',
-                                              screen_name2='elonmusk', since=None)
-    print(count)
+    api = twitterSearch.get_api_instance()
+    posts1 = twitterSearch.find_posts_twitter(api=api, screen_name='NASA',
+                                              pool_amount=20, since=None)
+    posts2 = twitterSearch.find_posts_twitter(api=api, screen_name='SpaceX',
+                                              pool_amount=20, since=None)
+
+    # print(twitterSearch.get_favorites_count(api, screen_name="BeardedRain", screen_name2="dzesov", since=None))
+    print(twitterSearch.get_categories_similarity(posts1=posts1, posts2=posts2))
