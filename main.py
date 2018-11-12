@@ -22,7 +22,7 @@ class TwitterApi():
         api.VerifyCredentials()
         return api
 
-    def is_follower_of(self, api, screen_name_1: str, screen_name_2: str):
+    def a_is_follower_of_b(self, api, screen_name_a: str, screen_name_b: str):
         """
         Is screen_name_1 subscriber of screen_name_2
         :param api:
@@ -34,18 +34,28 @@ class TwitterApi():
         if not api:
             return -1
         try:
-            followers = api.GetFollowers(screen_name=screen_name_2, count=1)
+            followers = api.GetFriends(screen_name=screen_name_a)
 
-            print(followers)
-            print(screen_name_2)
-            return screen_name_1 in followers
+            for user in followers:
+                if user.screen_name == screen_name_b:
+                    return True
+
+            return False
         except Exception as e:
             print(f'Exception occured: {e}')
         return -1
 
+    def getFollowers(screen_name: str):
+        if not api:
+            return -1
+        try:
+            return api.GetFollowers(screen_name=screen_name)
+        except Exception as e:
+            print(f'Exception occured: {e}')
+        return -1
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     api = twitterSearch.get_api_instance()
-    is_follower = twitterSearch.is_follower_of(api=api, screen_name_1='NASA', screen_name_2='SpaceX')
+    is_follower = twitterSearch.a_is_follower_of_b(api=api, screen_name_a='Angel1Katrin', screen_name_b='radiosvoboda')
     print(is_follower)
