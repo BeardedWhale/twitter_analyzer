@@ -248,8 +248,8 @@ class TwitterApi():
         if not api:
             return -1
         try:
-            followers = api.GetFollowers(screen_name=screen_name)
-            followers2 = api.GetFollowers(screen_name=screen_name2)
+            followers = api.GetFollowerIDs(screen_name=screen_name)
+            followers2 = api.GetFollowerIDs(screen_name=screen_name2)
 
             count = 0
             if not len(followers2) or not len(followers):
@@ -383,10 +383,10 @@ class TwitterApi():
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     api = twitterSearch.get_api_instance()
-    posts1 = twitterSearch.find_posts_twitter(api=api, screen_name='NASA',
-                                              pool_amount=20, since=None)
-    posts2 = twitterSearch.find_posts_twitter(api=api, screen_name='SpaceX',
-                                              pool_amount=20, since=None)
+    # posts1 = twitterSearch.find_posts_twitter(api=api, screen_name='NASA',
+    #                                           pool_amount=20, since=None)
+    # posts2 = twitterSearch.find_posts_twitter(api=api, screen_name='SpaceX',
+    #                                           pool_amount=20, since=None)
 
-    # print(twitterSearch.get_favorites_count(api, screen_name="BeardedRain", screen_name2="dzesov", since=None))
-    print(twitterSearch.get_categories_similarity(posts1=posts1, posts2=posts2))
+    print(twitterSearch.get_followers_similarity(api, screen_name="BeardedRain", screen_name2="dzesov"))
+
