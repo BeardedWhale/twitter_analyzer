@@ -127,6 +127,7 @@ class TwitterApi():
         :param screen_name:
         :return:
         """
+
     def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str)-> Dict[str, Any]:
         """
 
@@ -252,5 +253,5 @@ if __name__ == '__main__':
     twitterSearch = TwitterApi()
     posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='', pool_amount=50, since=None)
     # pprint(posts)
-    interactions = twitterSearch.find_user_interactions_in_posts(posts, '')
+    interactions = twitterSearch.a_is_follower_of_b(api = twitterSearch.get_api_instance(), screen_name_a='NASA', screen_name_b='SpaceX')
     pprint(interactions)
