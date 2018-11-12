@@ -1,5 +1,4 @@
 import locale
-from pprint import pprint
 from typing import Optional, List, Dict, Any
 
 import pytz
@@ -42,13 +41,12 @@ class TwitterApi():
         """
 
         if not api:
-
             return []
         if not since:
             since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
         posts = []
         if pool_amount is None or pool_amount == 0:
-            pool_amount =20
+            pool_amount = 20
 
         try:
             if since and since > datetime.datetime.now(datetime.timezone.utc):
@@ -184,6 +182,51 @@ class TwitterApi():
         if date.tzinfo not in [pytz.UTC, datetime.timezone.utc]:
             raise ValueError('Datetime should not be naive and should be in UTC (pytz.UTC or datetime.timezone.utc)')
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+    # calculates how many times user with screen_name liked user with screen_name2
+    def get_favorites_count(self, api, screen_name, screen_name2: str, since: datetime,
+                            until: datetime = datetime.datetime.now(datetime.timezone.utc)):
+        if not api:
+            return -1
+
+        try:
+            since, until = twitterSearch.parse_time_interval(since, until)
+            if since and until and since > until:
+                return -1
+
+            search_done = False
+            last_id = ''
+            count = 0
+            while not search_done:
+                favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
+                for fav in favorites:
+                    post = fav.AsDict()
+                    print(post['user']['screen_name'])
+                    last_id = post['id_str']
+                    if ((not since or since <= self.get_tweet_date(post['created_at'])) and
+                            (not until or until > self.get_tweet_date(post['created_at']))):
+                        if post['user']['screen_name'] == screen_name2:
+                            count += 1
+                    elif since > self.get_tweet_date(post['created_at']):
+                        search_done = True
+                        break
+
+            return count
+        except Exception as e:
+            print(f'Exception occured: {e}')
+            return -1
+
+    def parse_time_interval(self, since, until: datetime):
+        if not since:
+            since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
+
+        if since and since > datetime.datetime.now(datetime.timezone.utc):
+            since = datetime.datetime.now(datetime.timezone.utc)
+        if until and until > datetime.datetime.now(datetime.timezone.utc):
+            until = datetime.datetime.now(datetime.timezone.utc)
+
+        return since, until
+
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
