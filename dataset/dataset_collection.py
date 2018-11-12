@@ -185,6 +185,69 @@ class TwitterApi():
             raise ValueError('Datetime should not be naive and should be in UTC (pytz.UTC or datetime.timezone.utc)')
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
 
+    def a_is_follower_of_b(self, api, screen_name_a: str, screen_name_b: str):
+        """
+        Is screen_name_1 subscriber of screen_name_2?
+        :return: True or False depending on
+        """
+
+        if not api:
+            return -1
+        try:
+            followers = api.GetFriends(screen_name=screen_name_a)
+
+            for user in followers:
+                if user.screen_name == screen_name_b:
+                    return True
+
+            return False
+        except Exception as e:
+            print(f'Exception occured: {e}')
+        return -1
+
+    def similarity_creation_date(self, api, screen_name_1, screen_name_2):
+        """
+        The absolute value of difference. max is 1, min is lim->0. Counts as 1/Absolute_Value[user_date_1 - user_date_2]
+        :return: max 1 | min 0
+        """
+
+        if not api:
+            return -1
+        try:
+            user_1 = api.GetUser(screen_name=screen_name_1)
+            user_2 = api.GetUser(screen_name=screen_name_2)
+
+            date_user_1 = self.get_tweet_date(date=user_1.created_at)
+            date_user_2 = self.get_tweet_date(date=user_2.created_at)
+            return 1 / (abs(date_user_2 - date_user_1).days)
+        except Exception as e:
+            print(f'Exception occured: {e}')
+
+        return -1
+
+    def common_subscriptions(self, api, screen_name_1: str, screen_name_2: str):
+        """
+        If user 1 and user 2 are subscribed to one account, the name of the common acc. will be added to result list
+        """
+        if not api:
+            return -1
+        try:
+            friends_1 = api.GetFriends(screen_name=screen_name_1)
+            friends_2 = api.GetFriends(screen_name=screen_name_2)
+
+            common_list = []
+
+            for friend_1 in friends_1:
+                for friend_2 in friends_2:
+                    if friend_2.screen_name == friend_1.screen_name:
+                        common_list.append(friend_1.screen_name)
+
+            return common_list
+        except Exception as e:
+            print(f'Exception occured: {e}')
+
+        return -1
+
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='', pool_amount=50, since=None)
