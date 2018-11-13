@@ -10,7 +10,10 @@ import twitter
 import datetime
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
-    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY
+    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, DESCRIPTION_SIMILARITY, FOLLOWING_SIMILARITY, \
+    DATE_OF_CREATION_SIMILARITY, HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 consumer_id_key = 'NC19WDNaMoEaaV9s8nadVUvBI'
 consumer_secret_key = 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3'
@@ -457,6 +460,43 @@ class TwitterApi():
         return count / len(categories1)
 
 
+    def calculate_users_similarity(self, user1: Dict[str, Any], user2: Dict[str,Any])->Dict:
+        """
+        Calculates similarity between users
+        :param user1: dictionary with information about user1
+        :param user2: dictionary with information about user2
+        :return: similarity values
+        """
+        similarity = {}
+
+        similarity[DESCRIPTION_SIMILARITY] = self._calculate_description_similarity(
+            user1.get('description'),user2.get('description'))
+        similarity[FOLLOWING_SIMILARITY] = 0
+        similarity[DATE_OF_CREATION_SIMILARITY] = 0
+        similarity[HASHTAGS_SIMILARITY] = 0
+        similarity[CATEGORIES_SIMILARITY] = 0
+
+        return similarity
+
+
+    def _calculate_description_similarity(self, description1, description2)->float:
+        """
+        Computes cosine similarity of two descriptions of two users
+        :param description1: descruption of user 1
+        :param description2: description of user 2
+        :return: number in range [0,1] that characterizes how users descriptions are similar
+        """
+        def get_vectors(*strs):
+            text = [t for t in strs]
+            vectorizer = CountVectorizer(text)
+            vectorizer.fit(text)
+            return vectorizer.transform(text).toarray()
+
+        vectors = [t for t in get_vectors(description1, description2)]
+        similarity = cosine_similarity(vectors)[0, 1]
+        return similarity
+
+
 
 
 if __name__ == '__main__':
@@ -466,3 +506,4 @@ if __name__ == '__main__':
     # pprint(posts)
     interactions = twitterSearch.find_user_interactions_in_posts(posts, '')
     pprint(interactions)
+
