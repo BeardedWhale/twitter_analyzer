@@ -457,6 +457,8 @@ class TwitterApi():
         return count / len(categories1)
 
 
+
+
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='', pool_amount=50,
