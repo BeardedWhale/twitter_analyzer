@@ -41,10 +41,10 @@ NUMBER_OF_AUXILIARY_VARIABLES = 1
 SIMILARITY_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_SIMILARITIES)
 Z_MATRIX_SIZE = (NUMBER_OF_PAIRS, 1)
 W_MATRIX_SIZE = (NUMBER_OF_SIMILARITIES, 1)
-THETA_MATRIX_SIZE = (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VARIABLES + 1) # (n, 2)
+THETA_MATRIX_SIZE = (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VARIABLES + 1)  # (n, 2)
 Y_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 A_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
-b  = 0.1
+b = 0.1
 # TODO add initialization, parameters sizes and methods for updating weights
 
 def perform_newton_rapson_step(theta: np.array, z: np.array, w: np.array) -> Tuple[np.array, np.array, np.array]:
@@ -127,7 +127,8 @@ def initialize_parameter(size: Tuple, mu: float, sigma: float) -> np.array:
     return np.random.normal(mu, sigma, size=size)
 
 
-def z_first_gradient(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array, a: np.array) -> np.array:
+def z_first_gradient(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
+                     a: np.array) -> np.array:
     """
     Computes first graient of relationships parameter
     :param variance: number, constant
@@ -141,16 +142,16 @@ def z_first_gradient(variance: int, w: np.array, s: np.array, z: np.array, y: np
     """
 
     gradient1_values = []
-    for i, z_ith in enumerate(z[:,0]): # z_ith shape: (1, 1)
-        z_gradient1 = (1.0/variance) * (w.transpose().dot(s[i])) - z_ith # current shape: (1, 1)
+    for i, z_ith in enumerate(z[:, 0]):  # z_ith shape: (1, 1)
+        z_gradient1 = (1.0 / variance) * (w.transpose().dot(s[i])) - z_ith  # current shape: (1, 1)
 
         sum_of_interactions = 0
         for t in range(NUMBER_OF_INTERACTIONS):
-            y_t = y[i, t] # number
-            theta_t = theta[t] # shape: (1, 2)
-            theta_parameter_for_z = theta_t[0, NUMBER_OF_AUXILIARY_VARIABLES] # number
+            y_t = y[i, t]  # number
+            theta_t = theta[t]  # shape: (1, 2)
+            theta_parameter_for_z = theta_t[0, NUMBER_OF_AUXILIARY_VARIABLES]  # number
             exponent = _get_exponent(i, t, theta, z, a)
-            intermediate_result = (y_t - 1.0/(1.0 + exponent))*theta_parameter_for_z
+            intermediate_result = (y_t - 1.0 / (1.0 + exponent)) * theta_parameter_for_z
             sum_of_interactions += intermediate_result
 
         z_gradient1 = z_gradient1[0, 0] + sum_of_interactions
@@ -158,6 +159,7 @@ def z_first_gradient(variance: int, w: np.array, s: np.array, z: np.array, y: np
     gradient1 = np.array(gradient1_values)
     gradient1 = gradient1.reshape(Z_MATRIX_SIZE)
     return gradient1
+
 
 def z_second_gradient(variance: int, theta: np.array, a: np.array, z: np.array) -> np.array:
     """
@@ -169,7 +171,7 @@ def z_second_gradient(variance: int, theta: np.array, a: np.array, z: np.array) 
     :return: second gradient values
     """
     gradient2_values = []
-    for i, z_ith in enumerate(z[:,0]):
+    for i, z_ith in enumerate(z[:, 0]):
         z_gradient2 = - 1.0 / variance
 
         sum_of_interactions = 0
@@ -177,7 +179,7 @@ def z_second_gradient(variance: int, theta: np.array, a: np.array, z: np.array) 
             theta_t = theta[t]  # shape: (1, 2)
             theta_parameter_for_z = theta_t[0, NUMBER_OF_AUXILIARY_VARIABLES]  # number
             exponent = _get_exponent(i, t, theta, z, a)
-            intermediate_result = (theta_parameter_for_z**2)*exponent/((1 + exponent)**2)
+            intermediate_result = (theta_parameter_for_z ** 2) * exponent / ((1 + exponent) ** 2)
             sum_of_interactions += intermediate_result
         z_gradient2 -= sum_of_interactions
         gradient2_values.append(z_gradient2)
