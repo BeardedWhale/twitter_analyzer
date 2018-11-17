@@ -7,7 +7,10 @@ import twitter
 import datetime
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
-    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY
+    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, DESCRIPTION_SIMILARITY, FOLLOWING_SIMILARITY, \
+    DATE_OF_CREATION_SIMILARITY, HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 consumer_id_key = 'NC19WDNaMoEaaV9s8nadVUvBI'
 consumer_secret_key = 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3'
@@ -184,6 +187,73 @@ class TwitterApi():
         if date.tzinfo not in [pytz.UTC, datetime.timezone.utc]:
             raise ValueError('Datetime should not be naive and should be in UTC (pytz.UTC or datetime.timezone.utc)')
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+
+    def a_is_follower_of_b(self, api, screen_name_a: str, screen_name_b: str):
+        """
+        Is screen_name_1 subscriber of screen_name_2?
+        :return: True or False depending on
+        """
+
+        if not api:
+            return -1
+        try:
+            followers = api.GetFriends(screen_name=screen_name_a)
+
+            for user in followers:
+                if user.screen_name == screen_name_b:
+                    return True
+
+            return False
+        except Exception as e:
+            print(f'Exception occured: {e}')
+        return -1
+
+
+    def similarity_creation_date(self, api, screen_name_1, screen_name_2):
+        """
+        The absolute value of difference. max is 1, min is lim->0. Counts as 1/Absolute_Value[user_date_1 - user_date_2]
+        :return: max 1 | min 0
+        """
+
+        if not api:
+            return -1
+        try:
+            user_1 = api.GetUser(screen_name=screen_name_1)
+            user_2 = api.GetUser(screen_name=screen_name_2)
+
+            date_user_1 = self.get_tweet_date(date=user_1.created_at)
+            date_user_2 = self.get_tweet_date(date=user_2.created_at)
+            return 1 / (abs(date_user_2 - date_user_1).days)
+        except Exception as e:
+            print(f'Exception occured: {e}')
+
+        return -1
+
+
+    def common_subscriptions(self, api, screen_name_1: str, screen_name_2: str):
+        """
+        If user 1 and user 2 are subscribed to one account, the name of the common acc. will be added to result list
+        """
+        if not api:
+            return -1
+        try:
+            friends_1 = api.GetFriends(screen_name=screen_name_1)
+            friends_2 = api.GetFriends(screen_name=screen_name_2)
+
+            common_list = []
+
+            for friend_1 in friends_1:
+                for friend_2 in friends_2:
+                    if friend_2.screen_name == friend_1.screen_name:
+                        common_list.append(friend_1.screen_name)
+
+            return common_list
+        except Exception as e:
+            print(f'Exception occured: {e}')
+
+        return -1
+
 
     def get_favorites_count(self, api, screen_name, screen_name2: str, since: datetime,
                             until: datetime = datetime.datetime.now(datetime.timezone.utc)):
@@ -378,6 +448,45 @@ class TwitterApi():
                 if category1 == category2:
                     count += 1
         return count / len(categories1)
+
+
+    def calculate_users_similarity(self, user1: Dict[str, Any], user2: Dict[str,Any])->Dict:
+        """
+        Calculates similarity between users
+        :param user1: dictionary with information about user1
+        :param user2: dictionary with information about user2
+        :return: similarity values
+        """
+        similarity = {}
+
+        similarity[DESCRIPTION_SIMILARITY] = self._calculate_description_similarity(
+            user1.get('description'),user2.get('description'))
+        similarity[FOLLOWING_SIMILARITY] = 0
+        similarity[DATE_OF_CREATION_SIMILARITY] = 0
+        similarity[HASHTAGS_SIMILARITY] = 0
+        similarity[CATEGORIES_SIMILARITY] = 0
+
+        return similarity
+
+
+    def _calculate_description_similarity(self, description1, description2)->float:
+        """
+        Computes cosine similarity of two descriptions of two users
+        :param description1: descruption of user 1
+        :param description2: description of user 2
+        :return: number in range [0,1] that characterizes how users descriptions are similar
+        """
+        def get_vectors(*strs):
+            text = [t for t in strs]
+            vectorizer = CountVectorizer(text)
+            vectorizer.fit(text)
+            return vectorizer.transform(text).toarray()
+
+        vectors = [t for t in get_vectors(description1, description2)]
+        similarity = cosine_similarity(vectors)[0, 1]
+        return similarity
+
+
 
 
 if __name__ == '__main__':
