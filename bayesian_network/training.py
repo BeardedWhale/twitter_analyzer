@@ -49,18 +49,47 @@ b = 0.1
 
 # TODO add initialization, parameters sizes and methods for updating weights
 
-def perform_newton_rapson_step(theta: np.array, z: np.array, w: np.array) -> Tuple[np.array, np.array, np.array]:
-    new_theta = 0
-    new_z = 0
-    new_w = 0
+def perform_newton_rapson_step(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
+                               a: np.array) -> Tuple[np.array, np.array, np.array]:
+    new_theta = theta
+    new_z = z
+    new_w = w
+    error = 0.1  # TODO decide error
+    dw = 1
+    while dw > error:
+        dtheta, new_theta = update_theta(new_z, y, new_theta, a)
+        while dtheta > error:
+            dtheta, new_theta = update_theta(new_z, y, new_theta, a)
+
+        dz, new_theta = update_z(variance, new_w, s, new_z, new_theta, a)
+        while dz > error:
+            dz, new_z = update_z(variance, new_w, s, new_z, new_theta, a)
+
+        new_w = update_w(s, new_z, new_w)
 
 
-def update_theta(theta: np.array, z: np.array, w: np.array) -> np.array:
-    k = 0
+def update_theta(z: np.array, y: np.array, theta: np.array,
+                 a: np.array) -> np.array:
+    denom = np.linalg.inv(theta_second_gradient(z, y, theta, a))
+    dtheta = - theta_first_gradient(z, y, theta, a).dot(denom)
+
+    new_theta = np.add(theta, dtheta)
+    dtheta = dtheta ** 2  # TODO norm??? tipo summa kvadratov potom c error budem sravnivat'
+    dtheta = dtheta.sum()
+
+    return dtheta, new_theta
 
 
-def update_z(theta: np.array, z: np.array, w: np.array) -> np.array:
-    k = 4
+def update_z(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
+             a: np.array) -> np.array:
+    denom = np.linalg.inv(z_second_gradient(variance, theta, a, z))
+    dz = - z_first_gradient(variance, w, s, y, theta).dot(denom)
+
+    new_z = np.add(z, dz)
+    dz = dz ** 2  # TODO norm??? tipo summa kvadratov potom c error budem sravnivat'
+    dz = dz.sum()
+
+    return dz, new_z
 
 
 def update_w(S: np.array, z: np.array, w: np.array) -> np.array:
@@ -130,22 +159,6 @@ def initialize_parameter(size: Tuple, mu: float, sigma: float) -> np.array:
     return np.random.normal(mu, sigma, size=size)
 
 
-VARIANCE = 0.5
-LAMBDA_W = 0.5
-LAMBDA_THETA = 0.5
-NUMBER_OF_SIMILARITIES = 4
-NUMBER_OF_INTERACTIONS = 5
-NUMBER_OF_PAIRS = 100
-NUMBER_OF_AUXILIARY_VARIABLES = 1
-SIMILARITY_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_SIMILARITIES)
-Z_MATRIX_SIZE = (NUMBER_OF_PAIRS, 1)
-W_MATRIX_SIZE = (NUMBER_OF_SIMILARITIES, 1)
-THETA_MATRIX_SIZE = (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VARIABLES + 1)  # (n, 2)
-Y_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
-A_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
-b = 0.1
-
-
 def theta_first_gradient(z: np.array, y: np.array, theta: np.array,
                          a: np.array) -> np.array:
     """
@@ -164,7 +177,7 @@ def theta_first_gradient(z: np.array, y: np.array, theta: np.array,
             z_pair = z[pair]
             a_t = a[pair, t]
             u_t = np.concatenate(([a_t], z_pair))
-            term = y[pair, t] - 1.0 / (1.0 - _get_exponent(pair, t, theta_t, z, a))
+            term = y[pair, t] - 1.0 / (1.0 - _get_exponent(pair, t, theta, z, a))
             sum = np.add(sum, u_t.dot(term))
         term2 = theta_t.dot(LAMBDA_THETA)
         gradients[t] = np.add(sum, term2)
@@ -191,7 +204,7 @@ def theta_second_gradient(z: np.array, y: np.array, theta: np.array,
             z_pair = z[pair]
             a_t = a[pair, t]
             u_t = np.concatenate(([a_t], z_pair))
-            exp = _get_exponent(pair, t, theta_t, z, a)
+            exp = _get_exponent(pair, t, theta, z, a)
             term1 = y[pair, t] - exp / (1.0 - exp) ** 2
             term2 = u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).dot(
                 u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).transpose())
@@ -277,7 +290,7 @@ def _get_exponent(pair_index: int, interaction_index: int, theta: np.array, z: n
     a_t = a[pair_index, interaction_index]
     u_t = np.concatenate((a_t, z_i))  # TODO: a_t это же число?
     # TODO: если да, надо поменять на u_t = np.concatenate(([a_t], z_i)) а то ругается
-    exponent_power = - 1.0 * (theta.dot(u_t) + b)[0, 0]  # number; without [0,0] shape: (1,1)
+    exponent_power = - 1.0 * (theta.dot(u_t) + b)[0, 0]  # number; without [0,0] shape: (1,1) #TODO: theta[t]???
     return exp(exponent_power)
 
 
