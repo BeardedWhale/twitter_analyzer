@@ -188,7 +188,6 @@ class TwitterApi():
             raise ValueError('Datetime should not be naive and should be in UTC (pytz.UTC or datetime.timezone.utc)')
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
 
-
     def a_is_follower_of_b(self, api, screen_name_a: str, screen_name_b: str):
         """
         Is screen_name_1 subscriber of screen_name_2?
@@ -209,7 +208,6 @@ class TwitterApi():
             print(f'Exception occured: {e}')
         return -1
 
-
     def similarity_creation_date(self, api, screen_name_1, screen_name_2):
         """
         The absolute value of difference. max is 1, min is lim->0. Counts as 1/Absolute_Value[user_date_1 - user_date_2]
@@ -229,7 +227,6 @@ class TwitterApi():
             print(f'Exception occured: {e}')
 
         return -1
-
 
     def common_subscriptions(self, api, screen_name_1: str, screen_name_2: str):
         """
@@ -253,7 +250,6 @@ class TwitterApi():
             print(f'Exception occured: {e}')
 
         return -1
-
 
     def get_favorites_count(self, api, screen_name, screen_name2: str, since: datetime,
                             until: datetime = datetime.datetime.now(datetime.timezone.utc)):
@@ -379,8 +375,11 @@ class TwitterApi():
         natural_language_understanding = self.get_natural_language_understanding('2018-09-21')
         keywords = []
         for post in posts:
+            key = 'text'
+            if 'full_text' in post:
+                key = 'text'
             response = natural_language_understanding.analyze(
-                text=post['text'], features=Features(
+                text=post[key], features=Features(
                     keywords=KeywordsOptions(limit=3))).get_result()
             for word in response['keywords']:
                 keywords.append(word['text'])
@@ -417,8 +416,11 @@ class TwitterApi():
         categories = []
         for post in posts:
             try:
+                key = 'text'
+                if 'full_text' in post:
+                    key = 'text'
                 response = natural_language_understanding.analyze(
-                    text=post['text'],
+                    text=post[key],
                     features=Features(categories=CategoriesOptions())).get_result()
                 for category in response['categories']:
                     for c in category['label'].split('/'):
@@ -449,8 +451,7 @@ class TwitterApi():
                     count += 1
         return count / len(categories1)
 
-
-    def calculate_users_similarity(self, user1: Dict[str, Any], user2: Dict[str,Any])->Dict:
+    def calculate_users_similarity(self, user1: Dict[str, Any], user2: Dict[str, Any]) -> Dict:
         """
         Calculates similarity between users
         :param user1: dictionary with information about user1
@@ -460,7 +461,7 @@ class TwitterApi():
         similarity = {}
 
         similarity[DESCRIPTION_SIMILARITY] = self._calculate_description_similarity(
-            user1.get('description'),user2.get('description'))
+            user1.get('description'), user2.get('description'))
         similarity[FOLLOWING_SIMILARITY] = 0
         similarity[DATE_OF_CREATION_SIMILARITY] = 0
         similarity[HASHTAGS_SIMILARITY] = 0
@@ -468,14 +469,14 @@ class TwitterApi():
 
         return similarity
 
-
-    def _calculate_description_similarity(self, description1, description2)->float:
+    def _calculate_description_similarity(self, description1, description2) -> float:
         """
         Computes cosine similarity of two descriptions of two users
         :param description1: descruption of user 1
         :param description2: description of user 2
         :return: number in range [0,1] that characterizes how users descriptions are similar
         """
+
         def get_vectors(*strs):
             text = [t for t in strs]
             vectorizer = CountVectorizer(text)
@@ -487,15 +488,12 @@ class TwitterApi():
         return similarity
 
 
-
-
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     api = twitterSearch.get_api_instance()
-    # posts1 = twitterSearch.find_posts_twitter(api=api, screen_name='NASA',
-    #                                           pool_amount=20, since=None)
-    # posts2 = twitterSearch.find_posts_twitter(api=api, screen_name='SpaceX',
-    #                                           pool_amount=20, since=None)
+    posts1 = twitterSearch.find_posts_twitter(api=api, screen_name='NASA',
+                                               pool_amount=20, since=None)
+    posts2 = twitterSearch.find_posts_twitter(api=api, screen_name='SpaceX',
+                                              pool_amount=20, since=None)
 
-    print(twitterSearch.get_followers_similarity(api, screen_name="BeardedRain", screen_name2="dzesov"))
-
+    print(twitterSearch.get_categories_similarity(posts1, posts2))
