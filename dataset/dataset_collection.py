@@ -377,7 +377,7 @@ class TwitterApi():
         for post in posts:
             key = 'text'
             if 'full_text' in post:
-                key = 'text'
+                key = 'full_text'
             response = natural_language_understanding.analyze(
                 text=post[key], features=Features(
                     keywords=KeywordsOptions(limit=3))).get_result()
@@ -418,7 +418,8 @@ class TwitterApi():
             try:
                 key = 'text'
                 if 'full_text' in post:
-                    key = 'text'
+                    key = 'full_text'
+                    print("kek")
                 response = natural_language_understanding.analyze(
                     text=post[key],
                     features=Features(categories=CategoriesOptions())).get_result()
