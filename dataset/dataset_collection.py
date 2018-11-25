@@ -129,6 +129,7 @@ class TwitterApi():
         :param screen_name:
         :return:
         """
+
     def get_posts_information(self, posts: List[Dict]) -> Tuple[List, List, List]:
         """
         Gets a list of all users that were mentioned, commented and retweeted in given posts
@@ -154,7 +155,6 @@ class TwitterApi():
                         user_screen_name = user.get(SCREEN_NAME_KEY, '')
                         commented_users.append(user_screen_name)
         return retweeted_users, mentioned_users, commented_users
-
 
     def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str) -> Dict[str, Any]:
         """
@@ -238,7 +238,11 @@ class TwitterApi():
         if not api:
             return -1
         try:
-            return api.GetFriends(screen_name=screen_name)
+            friends = api.GetFriends(screen_name=screen_name)
+            followers_screen_names = []
+            for friend in friends:
+                followers_screen_names.append(friend['screen_name'])
+            return friends
 
         except Exception as e:
             print(f'Exception occured: {e}')
@@ -290,7 +294,7 @@ class TwitterApi():
         return -1
 
     def get_favorites_users(self, api, screen_name, since: datetime,
-                            until: datetime = datetime.datetime.now(datetime.timezone.utc))-> List[str]:
+                            until: datetime = datetime.datetime.now(datetime.timezone.utc)) -> List[str]:
         """
         Returns list of people whos posts were liked
         :param api:
@@ -318,7 +322,6 @@ class TwitterApi():
                 for fav in favorites:
                     post = fav.AsDict()
                     last_id = post['id_str']
-                    favorites_authors.append(post_author)
                     if ((not since or since <= self.get_tweet_date(post['created_at'])) and
                             (not until or until > self.get_tweet_date(post['created_at']))):
                         post_author = post['user']['screen_name']
@@ -428,7 +431,6 @@ class TwitterApi():
         return hashtags
 
 
-
 class DatasetCollection():
     def save_posts_of_user(self, twitterSearch: TwitterApi, screen_names, file):
         all_users = []
@@ -444,22 +446,22 @@ class DatasetCollection():
             # retweets = twitterSearch.find_retweets_twitter(posts=posts, screen_name=screen_name)
             retweeted_users, mentioned_users, commented_users = twitterSearch.get_posts_information(posts)
             favorite_users = twitterSearch.get_favorites_users(api, screen_name, since=datetime.datetime.now(
-                                                         datetime.timezone.utc) - datetime.timedelta(31),
-                                                        until=datetime.datetime.now(datetime.timezone.utc))
+                datetime.timezone.utc) - datetime.timedelta(31),
+                                                               until=datetime.datetime.now(datetime.timezone.utc))
             print(screen_name + "\n")
             # print(str(retweets))
             all_posts_with_user = dict()
             # all_posts_with_user['screen_name'] = screen_name
             # all_posts_with_user['user'] =
+            user = {}
 
             if len(posts) > 0:
-                user = []
                 user['screen_name'] = screen_name
-                user['list_of_comments'] =  commented_users# лист кого комментировал
-                user['list_of_retweet'] =retweeted_users # лист кого ретвител
-                user['list_of_mention'] = mentioned_users # лист кого упоминал
+                user['list_of_comments'] = commented_users  # лист кого комментировал
+                user['list_of_retweet'] = retweeted_users  # лист кого ретвител
+                user['list_of_mention'] = mentioned_users  # лист кого упоминал
                 user['list_of_likes'] = favorite_users  # лист кого он лайкал
-                user['follow_to'] = twitterSearch.get_followers_of(screen_name=screen_name)  # кого он фолловит
+                user['follow_to'] = twitterSearch.get_followers_of(api=api, screen_name=screen_name)  # кого он фолловит
                 user['description'] = posts[0]['user']['description']  # описание
                 user['creation_at'] = posts[0]['user']['created_at']  # дата создания
                 user['hashtag_list'] = twitterSearch.get_all_hashtags(posts)  # хештег лист
