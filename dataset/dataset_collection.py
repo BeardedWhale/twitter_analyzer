@@ -208,6 +208,16 @@ class TwitterApi():
             print(f'Exception occured: {e}')
         return -1
 
+    def get_followers_of(self, api, screen_name):
+        if not api:
+            return -1
+        try:
+            return api.GetFriends(screen_name=screen_name)
+
+        except Exception as e:
+            print(f'Exception occured: {e}')
+        return -1
+
     # S
     def similarity_creation_date(self, api, screen_name_1, screen_name_2):
         """
@@ -275,6 +285,7 @@ class TwitterApi():
             search_done = False
             last_id = ''
             count = 0
+            list = []
             while not search_done:
                 favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
                 for fav in favorites:
@@ -284,11 +295,12 @@ class TwitterApi():
                             (not until or until > self.get_tweet_date(post['created_at']))):
                         if post['user']['screen_name'] == screen_name2:
                             count += 1
+                            list.append(post['user']['screen_name'])
                     elif since > self.get_tweet_date(post['created_at']):
                         search_done = True
                         break
 
-            return count
+            return list
         except Exception as e:
             print(f'Exception occured: {e}')
             return -1
@@ -382,6 +394,13 @@ class TwitterApi():
                     count += 1
         return count / len(categories1)
 
+    def get_all_hashtags(self, posts):
+        hashtags = []
+        for post in posts:
+            hashtags.append(post['hashtags'])
+        return hashtags
+
+
 
 class DatasetCollection():
     def save_posts_of_user(self, twitterSearch, screen_names, file):
@@ -401,18 +420,33 @@ class DatasetCollection():
             all_posts_with_user = dict()
             # all_posts_with_user['screen_name'] = screen_name
             # all_posts_with_user['user'] =
-            user = []
-            user['screen_name'] = screen_name
-            user['list_of_comments'] = []# лист кого комментировал
-            user['list_of_retweet'] = []# лист кого ретвител
-            user['list_of_mention'] = []# лист кого упоминал
-            user['list_of_likes'] = []# лист кого он лайкал
-            user['follow_to'] = []# кого он фолловит
-            user['description'] = ""# описание
-            user['creation_at'] = ""# дата создания
-            user['hashtag_list'] = []# хештег лист
-            user['categories_list'] = []# лист категорий
 
+            if len(posts) > 0:
+                user = []
+                user['screen_name'] = screen_name
+                user['list_of_comments'] = []  # лист кого комментировал
+                user['list_of_retweet'] = []  # лист кого ретвител
+                user['list_of_mention'] = []  # лист кого упоминал
+                user['list_of_likes'] = twitterSearch.get_favorites_count(api=api)  # лист кого он лайкал
+                user['follow_to'] = twitterSearch.get_followers_of(screen_name=screen_name)  # кого он фолловит
+                user['description'] = posts[0]['user']['description']  # описание
+                user['creation_at'] = posts[0]['user']['created_at']  # дата создания
+                user['hashtag_list'] = twitterSearch.get_all_hashtags(posts)  # хештег лист
+                user['categories_list'] = []  # лист категорий
+            else:
+                user_req = api.GetUser(screen_name=screen_name)
+                user['screen_name'] = screen_name
+                user['list_of_comments'] = []  # лист кого комментировал
+                user['list_of_retweet'] = []  # лист кого ретвител
+                user['list_of_mention'] = []  # лист кого упоминал
+                user['list_of_likes'] = twitterSearch.get_favorites_count(api=api)  # лист кого он лайкал
+                user['follow_to'] = twitterSearch.get_followers_of(screen_name=screen_name)  # кого он фолловит
+                user['description'] = user_req['description']  # описание
+                user['creation_at'] = user_req['created_at']  # дата создания
+                user['hashtag_list'] = []  # хештег лист
+                user['categories_list'] = []  # лист категорий
+
+            all_posts_with_user['user'] = user
             new_posts = []
             for post in posts:
                 print("-")
@@ -507,23 +541,23 @@ if __name__ == '__main__':
 
 
     dataset = DatasetCollection()
-    # result_file = open("posts.json", "w")
-    # with open("accounts.txt") as file:
-    #     posts = []
-    #
-    #     posts.append(dataset.save_posts_of_user(twitterSearch=twitterSearch, screen_names=dataset.read_users(file),
-    #                                             file=result_file))
+    result_file = open("posts_with_users.json", "w")
+    with open("accounts.txt") as file:
+        posts = []
+
+        posts.append(dataset.save_posts_of_user(twitterSearch=twitterSearch, screen_names=dataset.read_users(file),
+                                                file=result_file))
 
 
 
-    s_file = open("similarity_file.json", "w")
-    with open("accounts.txt") as file1:
-        for line1 in file1:
-            with open("accounts.txt") as file2:
-                for line2 in file2:
-                    if line1 != line2:
-                        dataset.find_similarity(twitterSearch=twitterSearch, screen_name_1=line1, screen_name_2=line2,
-                                                file=s_file)
+        # s_file = open("similarity_file.json", "w")
+        # with open("accounts.txt") as file1:
+        #     for line1 in file1:
+        #         with open("accounts.txt") as file2:
+        #             for line2 in file2:
+        #                 if line1 != line2:
+        #                     dataset.find_similarity(twitterSearch=twitterSearch, screen_name_1=line1, screen_name_2=line2,
+        #                                             file=s_file)
 
-                        # print(twitterSearch.common_subscriptions_a_to_b(api=twitterSearch.get_api_instance(), screen_name_a="NASA",
-                        #                                                 screen_name_b="SpaceX"))
+        # print(twitterSearch.common_subscriptions_a_to_b(api=twitterSearch.get_api_instance(), screen_name_a="NASA",
+        #                                                 screen_name_b="SpaceX"))
