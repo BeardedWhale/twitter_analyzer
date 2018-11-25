@@ -11,8 +11,11 @@ import datetime
 import json
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
-    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, NUMBER_OF_COMMENTS_KEY, \
-    INTERACTION_VECTOR_KEY, SIMILARITY_VECTOR_KEY
+    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, DESCRIPTION_SIMILARITY, FOLLOWING_SIMILARITY, \
+    DATE_OF_CREATION_SIMILARITY, HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY, INTERACTION_VECTOR_KEY, \
+    SIMILARITY_VECTOR_KEY, NUMBER_OF_COMMENTS_KEY
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 consumer_id_key = 'NC19WDNaMoEaaV9s8nadVUvBI'
 consumer_secret_key = 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3'
@@ -405,17 +408,14 @@ class TwitterApi():
         return categories
 
     # S
-    def get_categories_similarity(self, posts1, posts2):
+    def get_categories_similarity(self, categories1, categories2):
         """
          Calculates users' similarity of posts based on categories from their posts
         :param posts1: list of posts of the 1st user
         :param posts2: list of posts of the user to compare with
         :return: percentage(number > 0 and < 1) of common categories w.r.t to the 1st user
         """
-        categories1 = self._get_categories(posts1)
-        print(categories1)
-        categories2 = self._get_categories(posts2)
-        print(categories2)
+
         if not len(categories1) or not len(categories2):
             return 0
         count = 0
@@ -431,9 +431,7 @@ class TwitterApi():
             hashtags.extend(post['hashtags'])
         return hashtags
 
-    # def count_comments_a_to_b(self, comments_of_a, screen_name_a, screen_name_b):
-    #     for comment in comments_of_a:
-    #         if(comment )
+
 
 class DatasetCollection():
     def save_posts_of_user(self, twitterSearch: TwitterApi, screen_names, file):
@@ -450,9 +448,10 @@ class DatasetCollection():
             # retweets = twitterSearch.find_retweets_twitter(posts=posts, screen_name=screen_name)
             retweeted_users, mentioned_users, commented_users = twitterSearch.get_posts_information(posts)
             favorite_users = twitterSearch.get_favorites_users(api, screen_name, since=datetime.datetime.now(
-                datetime.timezone.utc) - datetime.timedelta(31),
-                                                               until=datetime.datetime.now(datetime.timezone.utc))
+                                                         datetime.timezone.utc) - datetime.timedelta(31),
+                                                        until=datetime.datetime.now(datetime.timezone.utc))
             print(screen_name + "\n")
+            # print(str(retweets))
             all_posts_with_user = dict()
             user = {}
 
@@ -575,11 +574,12 @@ class DatasetCollection():
                 if i != j:
                     interaction_vector = {} # TODO
                     self._get_interaction_vector(twitterSearch=twitterSearch, user_1=user_1, user_2=user_2)
-                    similarity_vector = {} # TODO
+                    similarity_vector = self.get_user_simlarity_vector(user_1, user_2)
                     user_2_screen_name = ''
                     user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
                                                       SIMILARITY_VECTOR_KEY: similarity_vector}
-        all_user_pairs[user_screen_name] = user_pairs
+        user_info = {'auxiliary_vector': user_auxiliary_vars, 'users': user_pairs}
+        all_user_pairs[user_screen_name] = user_info
 
         return all_user_pairs
 
@@ -607,7 +607,92 @@ class DatasetCollection():
     #     file.writelines(
     #         f"is_followed_by={is_followed_by} is_followed_by={s_creation_day} s_common_subscriptions={s_common_subscriptions} "
     #         f"s_hashtag_similarity={s_hashtag_similarity} s_categories_similarity={s_categories_similarity}]")
+    def get_user_simlarity_vector(self, user_1: Dict, user_2: Dict) -> Dict:
+        """
+        computes similarity vector for pair of users
+        :param user_1:
+        :param user_2:
+        :return: dictionary with all similarity parameters
+        """
+        similarity = {}
+        user_1 = user_1['user']
+        user_2 = user_2['user']
+        user_1_following = set(user_1['follow_to'])
+        user_2_following = set(user_2['follow_to'])
 
+        common_followings = list(user_1_following.intersection(user_2_following))
+        following_sim = 1.0 * len(common_followings) / len(user_1_following)
+        description_1 = user_1['description']
+        description_2 = user_2['description']
+        description_simlarity = self._calculate_description_similarity(description_1, description_2)
+
+        date_of_creation_similarity = 0
+        hashtags_1 = set(user_1['hashtags'])
+        hashtags_2 = set(user_2['hashtags'])
+        common_hashtags = list(hashtags_1.intersection(hashtags_2))
+        hashtags_similarity = len(common_hashtags)/len(hashtags_1)
+        categories_1 = user_1['categories']
+        categories_2 = user_2['categories']
+        categories_similarity = twitterSearch.get_categories_similarity(categories_1, categories_2)
+        similarity[FOLLOWING_SIMILARITY] = following_sim
+        similarity[DESCRIPTION_SIMILARITY] = description_simlarity
+        similarity[DATE_OF_CREATION_SIMILARITY] = 0
+        similarity[HASHTAGS_SIMILARITY] = hashtags_similarity
+        similarity[CATEGORIES_SIMILARITY] = categories_similarity
+
+        return similarity
+
+
+    def _calculate_description_similarity(self, description1, description2) -> float:
+        """
+        Computes cosine similarity of two descriptions of two users
+        :param description1: descruption of user 1
+        :param description2: description of user 2
+        :return: number in range [0,1] that characterizes how users descriptions are similar
+        """
+
+        def get_vectors(*strs):
+            text = [t for t in strs]
+            vectorizer = CountVectorizer(text)
+            vectorizer.fit(text)
+            return vectorizer.transform(text).toarray()
+
+        vectors = [t for t in get_vectors(description1, description2)]
+        similarity = cosine_similarity(vectors)[0, 1]
+        return similarity
+
+    def find_similarity(self, twitterSearch, screen_name_1, screen_name_2, file):
+        posts1 = self._get_all_posts(screen_name=screen_name_1)
+        posts2 = self._get_all_posts(screen_name=screen_name_2)
+        print("--- Got Posts ---")
+
+        is_followed_by = twitterSearch.a_is_follower_of_b(api=twitterSearch.get_api_instance(),
+                                                          screen_name_a=screen_name_1,
+                                                          screen_name_b=screen_name_2)
+        s_creation_day = twitterSearch.similarity_creation_date(api=twitterSearch.get_api_instance(),
+                                                                screen_name_1=screen_name_1,
+                                                                screen_name_2=screen_name_2)
+        s_common_subscriptions = twitterSearch.common_subscriptions_a_to_b(api=twitterSearch.get_api_instance(),
+                                                                           screen_name_a=screen_name_1,
+                                                                           screen_name_b=screen_name_2)
+        print("--- Got Simple ---")
+
+        s_hashtag_similarity = twitterSearch.get_hashtags_similarity(posts1=posts1, posts2=posts2)
+        print("Hashtag finished")
+        s_categories_similarity = twitterSearch.get_categories_similarity(posts1=posts1, posts2=posts2)
+        print("---------")
+        file.write(f"similarity {screen_name_1} {screen_name_2}: [")
+        file.writelines(
+            f"is_followed_by={is_followed_by} is_followed_by={s_creation_day} s_common_subscriptions={s_common_subscriptions} "
+            f"s_hashtag_similarity={s_hashtag_similarity} s_categories_similarity={s_categories_similarity}]")
+
+    def read_users_info(self, file_name: str)-> Dict[]:
+        file_content = ''
+        with open(file_name) as f:
+            file_content = f.read()
+
+        users_info = json.loads(file_content)
+        return users_info
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
