@@ -25,7 +25,7 @@ While not converged:
 Note: relationships between users are not bidirectional, i.e. z(i,j)!=z(j,i)
 """
 
-from typing import Tuple, Callable
+from typing import Tuple
 import numpy as np
 
 from math import exp

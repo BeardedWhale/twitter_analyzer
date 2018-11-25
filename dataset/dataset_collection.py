@@ -1,7 +1,8 @@
 import locale
 from typing import List, Dict, Any
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
-from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions
+from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions, \
+    ConceptsOptions
 import pytz
 import twitter
 import datetime
@@ -364,72 +365,36 @@ class TwitterApi():
         )
         return n
 
-    def get_keywords(self, posts):
-        """
-        Retreives at most 3 keywords from given posts
-        :param posts: list of posts to analyze
-        :return: list of keywords
-        """
-        if not len(posts):
-            return []
-        natural_language_understanding = self.get_natural_language_understanding('2018-09-21')
-        keywords = []
+    def parse_posts_to_text(self, posts):
+        text = []
         for post in posts:
-            key = 'text'
-            if 'full_text' in post:
-                key = 'full_text'
-            response = natural_language_understanding.analyze(
-                text=post[key], features=Features(
-                    keywords=KeywordsOptions(limit=3))).get_result()
-            for word in response['keywords']:
-                keywords.append(word['text'])
-        return keywords
-
-    def get_keywords_similarity(self, posts1, posts2):
-        """
-        Calculates users' similarity of posts based on keywords from their posts
-        :param posts1: list of posts of the 1st user
-        :param posts2: list of posts of the user to compare with
-        :return: percentage(number > 0 and < 1) of common keywords w.r.t 1st user
-        """
-        keywords1 = self.get_keywords(posts1)
-        keywords2 = self.get_keywords(posts2)
-        print(keywords1)
-        print(keywords2)
-        if not len(keywords1) or not len(keywords2):
-            return 0
-        count = 0
-        for word1 in keywords1:
-            for word2 in keywords2:
-                if word1 == word2:
-                    count += 1
-        return count / len(keywords1)
+            if post['lang'] == 'en':
+                text.append(post['text'].replace('\n', ''))
+        return ''.join(text)
 
     def get_categories(self, posts):
         """
         :param posts: list of posts to analyze
         :return: list of unique categories
         """
-        if not len(posts):
+        text = self.parse_posts_to_text(posts)
+        print(text)
+        if not len(text):
             return []
         natural_language_understanding = self.get_natural_language_understanding('2018-03-16')
         categories = []
-        for post in posts:
-            try:
-                key = 'text'
-                if 'full_text' in post:
-                    key = 'full_text'
-                    print("kek")
-                response = natural_language_understanding.analyze(
-                    text=post[key],
-                    features=Features(categories=CategoriesOptions())).get_result()
-                for category in response['categories']:
-                    for c in category['label'].split('/'):
-                        if c == '' or c in categories:
-                            continue
-                        categories.append(c)
-            except Exception:
-                continue
+
+        try:
+            response = natural_language_understanding.analyze(
+                text=text,
+                features=Features(concepts=ConceptsOptions(limit=20))).get_result()
+            for category in response['concepts']:
+                c = category['text']
+                if c == '' or c in categories:
+                    continue
+                categories.append(c)
+        except Exception:
+            return -1
         return categories
 
     def get_categories_similarity(self, posts1, posts2):
@@ -452,48 +417,12 @@ class TwitterApi():
                     count += 1
         return count / len(categories1)
 
-    def calculate_users_similarity(self, user1: Dict[str, Any], user2: Dict[str, Any]) -> Dict:
-        """
-        Calculates similarity between users
-        :param user1: dictionary with information about user1
-        :param user2: dictionary with information about user2
-        :return: similarity values
-        """
-        similarity = {}
-
-        similarity[DESCRIPTION_SIMILARITY] = self._calculate_description_similarity(
-            user1.get('description'), user2.get('description'))
-        similarity[FOLLOWING_SIMILARITY] = 0
-        similarity[DATE_OF_CREATION_SIMILARITY] = 0
-        similarity[HASHTAGS_SIMILARITY] = 0
-        similarity[CATEGORIES_SIMILARITY] = 0
-
-        return similarity
-
-    def _calculate_description_similarity(self, description1, description2) -> float:
-        """
-        Computes cosine similarity of two descriptions of two users
-        :param description1: descruption of user 1
-        :param description2: description of user 2
-        :return: number in range [0,1] that characterizes how users descriptions are similar
-        """
-
-        def get_vectors(*strs):
-            text = [t for t in strs]
-            vectorizer = CountVectorizer(text)
-            vectorizer.fit(text)
-            return vectorizer.transform(text).toarray()
-
-        vectors = [t for t in get_vectors(description1, description2)]
-        similarity = cosine_similarity(vectors)[0, 1]
-        return similarity
-
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     api = twitterSearch.get_api_instance()
     posts1 = twitterSearch.find_posts_twitter(api=api, screen_name='NASA',
-                                               pool_amount=20, since=None)
+                                              pool_amount=20, since=None)
     posts2 = twitterSearch.find_posts_twitter(api=api, screen_name='SpaceX',
                                               pool_amount=20, since=None)
 
