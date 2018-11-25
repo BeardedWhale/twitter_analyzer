@@ -279,9 +279,10 @@ class TwitterApi():
 
         return -1
 
-    def get_favorites_count(self, api, screen_name, screen_name2: str, since: datetime,
-                            until: datetime = datetime.datetime.now(datetime.timezone.utc)):
+    def get_favorites_users(self, api, screen_name, since: datetime,
+                            until: datetime = datetime.datetime.now(datetime.timezone.utc))-> List[str]:
         """
+        Returns list of people whos posts were liked
         :param api:
         :param screen_name:
         :param screen_name2:
@@ -301,20 +302,22 @@ class TwitterApi():
             search_done = False
             last_id = ''
             count = 0
+            favorites_authors = []
             while not search_done:
                 favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
                 for fav in favorites:
                     post = fav.AsDict()
                     last_id = post['id_str']
+                    favorites_authors.append(post_author)
                     if ((not since or since <= self.get_tweet_date(post['created_at'])) and
                             (not until or until > self.get_tweet_date(post['created_at']))):
-                        if post['user']['screen_name'] == screen_name2:
-                            count += 1
+                        post_author = post['user']['screen_name']
+                        favorites_authors.append(post_author)
                     elif since > self.get_tweet_date(post['created_at']):
                         search_done = True
                         break
 
-            return count
+            return favorites_authors
         except Exception as e:
             print(f'Exception occured: {e}')
             return -1
@@ -423,6 +426,9 @@ class DatasetCollection():
 
             # retweets = twitterSearch.find_retweets_twitter(posts=posts, screen_name=screen_name)
             retweeted_users, mentioned_users, commented_users = twitterSearch.get_posts_information(posts)
+            favorite_users = twitterSearch.get_favorites_users(api, screen_name, since=datetime.datetime.now(
+                                                         datetime.timezone.utc) - datetime.timedelta(31),
+                                                        until=datetime.datetime.now(datetime.timezone.utc))
             print(screen_name + "\n")
             # print(str(retweets))
             all_posts_with_user = dict()
@@ -433,7 +439,7 @@ class DatasetCollection():
             user['list_of_comments'] = commented_users# лист кого комментировал
             user['list_of_retweet'] = retweeted_users# лист кого ретвител
             user['list_of_mention'] = mentioned_users# лист кого упоминал
-            user['list_of_likes'] = []# лист кого он лайкал
+            user['list_of_likes'] = favorite_users # лист кого он лайкал
             user['follow_to'] = []# кого он фолловит
             user['description'] = ""# описание
             user['creation_at'] = ""# дата создания
