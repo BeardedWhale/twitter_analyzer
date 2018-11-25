@@ -130,6 +130,7 @@ class TwitterApi():
         :param screen_name:
         :return:
         """
+
     def get_posts_information(self, posts: List[Dict]) -> Tuple[List, List, List]:
         """
         Gets a list of all users that were mentioned, commented and retweeted in given posts
@@ -155,7 +156,6 @@ class TwitterApi():
                         user_screen_name = user.get(SCREEN_NAME_KEY, '')
                         commented_users.append(user_screen_name)
         return retweeted_users, mentioned_users, commented_users
-
 
     def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str) -> Dict[str, Any]:
         """
@@ -291,7 +291,7 @@ class TwitterApi():
         return -1
 
     def get_favorites_users(self, api, screen_name, since: datetime,
-                            until: datetime = datetime.datetime.now(datetime.timezone.utc))-> List[str]:
+                            until: datetime = datetime.datetime.now(datetime.timezone.utc)) -> List[str]:
         """
         Returns list of people whos posts were liked
         :param api:
@@ -384,7 +384,6 @@ class TwitterApi():
                 text.append(post['text'].replace('\n', ''))
         return ''.join(text)
 
-
     def get_categories(self, posts):
         """
         :param posts: list of posts to analyze
@@ -438,7 +437,6 @@ class TwitterApi():
         return hashtags
 
 
-
 class DatasetCollection():
     def save_posts_of_user(self, twitterSearch: TwitterApi, screen_names, file):
         all_users = []
@@ -454,8 +452,8 @@ class DatasetCollection():
             # retweets = twitterSearch.find_retweets_twitter(posts=posts, screen_name=screen_name)
             retweeted_users, mentioned_users, commented_users = twitterSearch.get_posts_information(posts)
             favorite_users = twitterSearch.get_favorites_users(api, screen_name, since=datetime.datetime.now(
-                                                         datetime.timezone.utc) - datetime.timedelta(31),
-                                                        until=datetime.datetime.now(datetime.timezone.utc))
+                datetime.timezone.utc) - datetime.timedelta(31),
+                                                               until=datetime.datetime.now(datetime.timezone.utc))
             print(screen_name + "\n")
             # print(str(retweets))
             all_posts_with_user = dict()
@@ -465,9 +463,9 @@ class DatasetCollection():
             if len(posts) > 0:
                 user = []
                 user['screen_name'] = screen_name
-                user['list_of_comments'] =  commented_users# лист кого комментировал
-                user['list_of_retweet'] =retweeted_users # лист кого ретвител
-                user['list_of_mention'] = mentioned_users # лист кого упоминал
+                user['list_of_comments'] = commented_users  # лист кого комментировал
+                user['list_of_retweet'] = retweeted_users  # лист кого ретвител
+                user['list_of_mention'] = mentioned_users  # лист кого упоминал
                 user['list_of_likes'] = favorite_users  # лист кого он лайкал
                 user['follow_to'] = twitterSearch.get_followers_of(screen_name=screen_name)  # кого он фолловит
                 user['description'] = posts[0]['user']['description']  # описание
@@ -549,8 +547,7 @@ class DatasetCollection():
 
         return -1
 
-
-    def get_pair_user_vectors(self, users: List[Dict])-> Tuple[Dict[str, List]]:
+    def get_pair_user_vectors(self, users: List[Dict]) -> Tuple[Dict[str, List]]:
         """
         calculates interactions, similarity and auxiliary variables for pair of users
         to calculate relationship strength
@@ -561,19 +558,17 @@ class DatasetCollection():
         for i, user in enumerate(users):
             user_screen_name = ''
             user_pairs = {}
-            user_auxiliary_vars = {NUMBER_OF_COMMENTS_KEY: user} # TODO
+            user_auxiliary_vars = {NUMBER_OF_COMMENTS_KEY: user}  # TODO
             for j, user_2 in enumerate(users):
                 if i != j:
-                    interaction_vector = {} # TODO
-                    similarity_vector = {} # TODO
+                    interaction_vector = {}  # TODO
+                    similarity_vector = {}  # TODO
                     user_2_screen_name = ''
                     user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
                                                       SIMILARITY_VECTOR_KEY: similarity_vector}
         all_user_pairs[user_screen_name] = user_pairs
 
         return all_user_pairs
-
-
 
     def find_similarity(self, twitterSearch, screen_name_1, screen_name_2, file):
         posts1 = self._get_all_posts(screen_name=screen_name_1)
@@ -600,12 +595,32 @@ class DatasetCollection():
             f"is_followed_by={is_followed_by} is_followed_by={s_creation_day} s_common_subscriptions={s_common_subscriptions} "
             f"s_hashtag_similarity={s_hashtag_similarity} s_categories_similarity={s_categories_similarity}]")
 
+    def find_auxilirary(self, user):
+        """
+
+        :param user: user for whom to return dictionary
+        :return: {COMMENTS: int, RETWEETS: int, MENTIONS:int, LIKES:int, FOLLOWINGS:int}
+
+        """
+        auxil = {}
+        # comments  [in timestamp]
+        auxil['COMMENTS'] = len(user['list_of_comments'])
+        # retweets [in timestamp]
+        auxil['RETWEETS'] = len(user['list_of_retweet'])
+        # mentions [in timestamp]
+        auxil['MENTIONS'] = len(user['list_of_mention'])
+        # likes [in timestamp]
+        auxil['LIKES'] = len(user['list_of_likes'])
+        # following [all]
+        auxil['FOLLOWINGS'] = len(user['follow_to'])
+
+        return auxil
+
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
 
     # pprint(posts)
-
 
     dataset = DatasetCollection()
     result_file = open("posts_with_users.json", "w")
@@ -614,8 +629,6 @@ if __name__ == '__main__':
 
         posts.append(dataset.save_posts_of_user(twitterSearch=twitterSearch, screen_names=dataset.read_users(file),
                                                 file=result_file))
-
-
 
         # s_file = open("similarity_file.json", "w")
         # with open("accounts.txt") as file1:
