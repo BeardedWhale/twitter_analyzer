@@ -1,6 +1,6 @@
 import locale
 from pprint import pprint
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from typing import List, Dict, Any
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
 from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions
@@ -129,6 +129,32 @@ class TwitterApi():
         :param screen_name:
         :return:
         """
+    def get_posts_information(self, posts: List[Dict]) -> Tuple[List, List, List]:
+        """
+        Gets a list of all users that were mentioned, commented and retweeted in given posts
+        :param posts:
+        :return:
+        """
+        retweeted_users = []
+        mentioned_users = []
+        commented_users = []
+        for post in posts:
+            if RETWEETED_STATUS_KEY in post:
+                retweet_info = post.get(RETWEETED_STATUS_KEY, {})
+                retweet_author = retweet_info.get(USER_KEY, {})
+                author_screen_name = retweet_author.get(SCREEN_NAME_KEY, '')
+                retweeted_users.append(author_screen_name)
+            if USER_MENTIONS_KEY in post:
+                if IN_REPLY_TO_SCREEN_NAME_KEY in post:
+                    reply_screen_name = post.get(IN_REPLY_TO_SCREEN_NAME_KEY, '')
+                    commented_users.append(reply_screen_name)
+                else:
+                    users_mentioned = post.get(USER_MENTIONS_KEY, [])
+                    for user in users_mentioned:
+                        user_screen_name = user.get(SCREEN_NAME_KEY, '')
+                        commented_users.append(user_screen_name)
+        return retweeted_users, mentioned_users, commented_users
+
 
     def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str) -> Dict[str, Any]:
         """
@@ -403,7 +429,7 @@ class TwitterApi():
 
 
 class DatasetCollection():
-    def save_posts_of_user(self, twitterSearch, screen_names, file):
+    def save_posts_of_user(self, twitterSearch: TwitterApi, screen_names, file):
         all_users = []
         for screen_name in screen_names:
 
@@ -415,6 +441,7 @@ class DatasetCollection():
                                                          datetime.timezone.utc))  # TODO WTF is this time
 
             # retweets = twitterSearch.find_retweets_twitter(posts=posts, screen_name=screen_name)
+            retweeted_users, mentioned_users, commented_users = twitterSearch.get_posts_information(posts)
             print(screen_name + "\n")
             # print(str(retweets))
             all_posts_with_user = dict()
@@ -424,9 +451,9 @@ class DatasetCollection():
             if len(posts) > 0:
                 user = []
                 user['screen_name'] = screen_name
-                user['list_of_comments'] = []  # лист кого комментировал
-                user['list_of_retweet'] = []  # лист кого ретвител
-                user['list_of_mention'] = []  # лист кого упоминал
+                user['list_of_comments'] =  commented_users# лист кого комментировал
+                user['list_of_retweet'] =retweeted_users # лист кого ретвител
+                user['list_of_mention'] = mentioned_users # лист кого упоминал
                 user['list_of_likes'] = twitterSearch.get_favorites_count(api=api)  # лист кого он лайкал
                 user['follow_to'] = twitterSearch.get_followers_of(screen_name=screen_name)  # кого он фолловит
                 user['description'] = posts[0]['user']['description']  # описание
