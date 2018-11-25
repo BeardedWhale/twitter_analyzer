@@ -12,7 +12,7 @@ import json
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
     IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, DESCRIPTION_SIMILARITY, FOLLOWING_SIMILARITY, \
-    DATE_OF_CREATION_SIMILARITY, HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY, INTERACTION_VECTOR_KEY, \
+    HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY, INTERACTION_VECTOR_KEY, \
     SIMILARITY_VECTOR_KEY, NUMBER_OF_COMMENTS_KEY
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -245,7 +245,7 @@ class TwitterApi():
             friends = api.GetFriends(screen_name=screen_name)
             followers_screen_names = []
             for friend in friends:
-                followers_screen_names.append(friend['screen_name'])
+                followers_screen_names.append(friend.screen_name)
             return friends
 
         except Exception as e:
@@ -636,7 +636,6 @@ class DatasetCollection():
         categories_similarity = twitterSearch.get_categories_similarity(categories_1, categories_2)
         similarity[FOLLOWING_SIMILARITY] = following_sim
         similarity[DESCRIPTION_SIMILARITY] = description_simlarity
-        similarity[DATE_OF_CREATION_SIMILARITY] = 0
         similarity[HASHTAGS_SIMILARITY] = hashtags_similarity
         similarity[CATEGORIES_SIMILARITY] = categories_similarity
 
@@ -686,7 +685,7 @@ class DatasetCollection():
             f"is_followed_by={is_followed_by} is_followed_by={s_creation_day} s_common_subscriptions={s_common_subscriptions} "
             f"s_hashtag_similarity={s_hashtag_similarity} s_categories_similarity={s_categories_similarity}]")
 
-    def read_users_info(self, file_name: str)-> Dict[]:
+    def read_users_info(self, file_name: str)-> Dict:
         file_content = ''
         with open(file_name) as f:
             file_content = f.read()
