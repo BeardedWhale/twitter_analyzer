@@ -11,7 +11,8 @@ import datetime
 import json
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
-    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY
+    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, NUMBER_OF_COMMENTS_KEY, \
+    INTERACTION_VECTOR_KEY, SIMILARITY_VECTOR_KEY
 
 consumer_id_key = 'NC19WDNaMoEaaV9s8nadVUvBI'
 consumer_secret_key = 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3'
@@ -540,6 +541,32 @@ class DatasetCollection():
                 return account['posts']
 
         return -1
+
+
+    def get_pair_user_vectors(self, users: List[Dict])-> Tuple[Dict[str, List]]:
+        """
+        calculates interactions, similarity and auxiliary variables for pair of users
+        to calculate relationship strength
+        :param users:
+        :return:
+        """
+        all_user_pairs = {}
+        for i, user in enumerate(users):
+            user_screen_name = ''
+            user_pairs = {}
+            user_auxiliary_vars = {NUMBER_OF_COMMENTS_KEY: user} # TODO
+            for j, user_2 in enumerate(users):
+                if i != j:
+                    interaction_vector = {} # TODO
+                    similarity_vector = {} # TODO
+                    user_2_screen_name = ''
+                    user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
+                                                      SIMILARITY_VECTOR_KEY: similarity_vector}
+        all_user_pairs[user_screen_name] = user_pairs
+
+        return all_user_pairs
+
+
 
     def find_similarity(self, twitterSearch, screen_name_1, screen_name_2, file):
         posts1 = self._get_all_posts(screen_name=screen_name_1)
