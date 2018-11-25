@@ -1,4 +1,6 @@
 import locale
+from pprint import pprint
+from typing import Optional, List, Dict, Any
 from typing import List, Dict, Any
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
 from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions, \
@@ -8,10 +10,7 @@ import twitter
 import datetime
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
-    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, DESCRIPTION_SIMILARITY, FOLLOWING_SIMILARITY, \
-    DATE_OF_CREATION_SIMILARITY, HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+    IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY
 
 consumer_id_key = 'NC19WDNaMoEaaV9s8nadVUvBI'
 consumer_secret_key = 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3'
@@ -21,7 +20,6 @@ api = None
 
 
 class TwitterApi():
-
     def get_api_instance(self):
         global api
         if api:
@@ -189,6 +187,7 @@ class TwitterApi():
             raise ValueError('Datetime should not be naive and should be in UTC (pytz.UTC or datetime.timezone.utc)')
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
 
+
     def a_is_follower_of_b(self, api, screen_name_a: str, screen_name_b: str):
         """
         Is screen_name_1 subscriber of screen_name_2?
@@ -209,6 +208,7 @@ class TwitterApi():
             print(f'Exception occured: {e}')
         return -1
 
+
     def similarity_creation_date(self, api, screen_name_1, screen_name_2):
         """
         The absolute value of difference. max is 1, min is lim->0. Counts as 1/Absolute_Value[user_date_1 - user_date_2]
@@ -228,6 +228,7 @@ class TwitterApi():
             print(f'Exception occured: {e}')
 
         return -1
+
 
     def common_subscriptions(self, api, screen_name_1: str, screen_name_2: str):
         """
@@ -251,6 +252,7 @@ class TwitterApi():
             print(f'Exception occured: {e}')
 
         return -1
+
 
     def get_favorites_count(self, api, screen_name, screen_name2: str, since: datetime,
                             until: datetime = datetime.datetime.now(datetime.timezone.utc)):
@@ -292,6 +294,7 @@ class TwitterApi():
             print(f'Exception occured: {e}')
             return -1
 
+
     def parse_time_interval(self, since, until: datetime):
         if not since:
             since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
@@ -302,6 +305,7 @@ class TwitterApi():
             until = datetime.datetime.now(datetime.timezone.utc)
 
         return since, until
+
 
     def get_followers_similarity(self, api, screen_name, screen_name2):
         """
@@ -315,8 +319,8 @@ class TwitterApi():
         if not api:
             return -1
         try:
-            followers = api.GetFollowerIDs(screen_name=screen_name)
-            followers2 = api.GetFollowerIDs(screen_name=screen_name2)
+            followers = api.GetFollowers(screen_name=screen_name)
+            followers2 = api.GetFollowers(screen_name=screen_name2)
 
             count = 0
             if not len(followers2) or not len(followers):
@@ -331,6 +335,7 @@ class TwitterApi():
         except Exception as e:
             print(f'Exception occured: {e}')
         return -1
+
 
     def get_hashtags_similarity(self, posts1, posts2):
         """
@@ -357,6 +362,7 @@ class TwitterApi():
                     count += 1
         return count / len(tags1)
 
+
     def get_natural_language_understanding(self, version):
         n = NaturalLanguageUnderstandingV1(
             version=version,
@@ -371,6 +377,7 @@ class TwitterApi():
             if post['lang'] == 'en':
                 text.append(post['text'].replace('\n', ''))
         return ''.join(text)
+
 
     def get_categories(self, posts):
         """
@@ -397,6 +404,7 @@ class TwitterApi():
             return -1
         return categories
 
+
     def get_categories_similarity(self, posts1, posts2):
         """
          Calculates users' similarity of posts based on categories from their posts
@@ -420,10 +428,8 @@ class TwitterApi():
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
-    api = twitterSearch.get_api_instance()
-    posts1 = twitterSearch.find_posts_twitter(api=api, screen_name='NASA',
-                                              pool_amount=20, since=None)
-    posts2 = twitterSearch.find_posts_twitter(api=api, screen_name='SpaceX',
-                                              pool_amount=20, since=None)
-
-    print(twitterSearch.get_categories_similarity(posts1, posts2))
+    posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='', pool_amount=50,
+                                             since=None)
+    # pprint(posts)
+    interactions = twitterSearch.find_user_interactions_in_posts(posts, '')
+    pprint(interactions)
