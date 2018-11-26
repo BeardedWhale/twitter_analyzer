@@ -18,7 +18,7 @@ from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, U
     SIMILARITY_VECTOR_KEY, NUMBER_OF_COMMENTS_KEY, LIST_OF_COMMENTS_KEY, COMMENTS_INTERACTION, RETWEETS_INTERACTION, \
     LIST_OF_RETWEETS_KEY, LIST_OF_MENTIONS_KEY, LIST_OF_LIKES_KEY, LIST_OF_FOLLOWING_KEY, FOLLOWING_INTERACTION, \
     LIKES_INTERACTION, DESCRIPTION_KEY, LIST_OF_HASHTAGS_KEY, LIST_OF_CATEGORIES_KEY, CONSUMER_ID_KEY, \
-    CONSUMER_SECRET_KEY, ACCESS_TOKEN_KEY, ACCESS_TOKEN_SECRET
+    CONSUMER_SECRET_KEY, ACCESS_TOKEN_KEY, ACCESS_TOKEN_SECRET, MENTIONS_INTERACTION
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -27,15 +27,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 API_KEYS = [{CONSUMER_ID_KEY: 'meq7EApEAfRF8jxpGqr0qxqFX',
              CONSUMER_SECRET_KEY: 'wHPYg8feuE4zvzDRYRXbGeH9d1vaHcVv7Zw03MIon6Y4WbDjE0',
              ACCESS_TOKEN_KEY: '1058944938887409664-GDAlXxbFQYze8gcPDRKYwtebzDhRdq',
-             ACCESS_TOKEN_SECRET: 'IRnR2K9ZDbA4Nt7WrlP4XsxMAj9zC3GCvW7FPNNpwmIMo'},
-            {CONSUMER_ID_KEY: 'ttLrqiM0ejlJyEN7PFiE4CcIqWsuukg6KW7D0srtICFz9',
+             ACCESS_TOKEN_SECRET: 'ttLrqiM0ejlJyEN7PFiE4CcIqWsuukg6KW7D0srtICFz9'},
+            {CONSUMER_ID_KEY: 'pRs7lC697sJpY5FqmxS4Fpy2j',
              CONSUMER_SECRET_KEY: 'CjrPspD8t2Iz9Skk0WfW7pVi6VdwV7oStOn9XlnDzPIA7SWKr6',
              ACCESS_TOKEN_KEY: '1058944938887409664-2wzfwfnccNLFFs742j1Eh4TTVo98v0',
              ACCESS_TOKEN_SECRET: 'IRnR2K9ZDbA4Nt7WrlP4XsxMAj9zC3GCvW7FPNNpwmIMo'},
-            {CONSUMER_ID_KEY: 'meq7EApEAfRF8jxpGqr0qxqFX',
-             CONSUMER_SECRET_KEY: 'wHPYg8feuE4zvzDRYRXbGeH9d1vaHcVv7Zw03MIon6Y4WbDjE0',
-             ACCESS_TOKEN_KEY: '1058944938887409664-GDAlXxbFQYze8gcPDRKYwtebzDhRdq',
-             ACCESS_TOKEN_SECRET: 'ttLrqiM0ejlJyEN7PFiE4CcIqWsuukg6KW7D0srtICFz9'}]
+            {CONSUMER_ID_KEY: 'NC19WDNaMoEaaV9s8nadVUvBI',
+             CONSUMER_SECRET_KEY: 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3',
+             ACCESS_TOKEN_KEY: '1058944938887409664-402KNxXTgNNhMoAK3pmAUziB3Fhxzj',
+             ACCESS_TOKEN_SECRET: 'vVxGZQdN9ubMK1EnxZGx62ZsxVqwFQiwDZmXmEMfPYSKj'}]
 api = None
 
 
@@ -116,11 +116,11 @@ class TwitterApi():
                         fail = False
                     except Exception as e:
                         api = self.update_api_instance(number_of_tries)
-                        number_of_tries += 1
+                        number_of_tries +=1
                         if number_of_tries > 10:
                             print(f'something bad happened. Tried 10 times, it doesn\'t help e: {e}')
                             break
-                        if number_of_tries % 3 == 0:
+                        if number_of_tries%3 == 0:
                             print("[TIMELINE] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES")
                             time.sleep(300)
 
@@ -177,14 +177,6 @@ class TwitterApi():
                 if author_screen_name == screen_name:
                     retweets.append(post)
         return retweets
-
-    def find_mentions_twitter(self, posts: List[Dict], screen_name: str) -> List[Dict[str, Any]]:
-        """
-
-        :param posts:
-        :param screen_name:
-        :return:
-        """
 
     def get_posts_information(self, posts: List[Dict]) -> Tuple[List, List, List]:
         """
@@ -270,7 +262,8 @@ class TwitterApi():
             raise ValueError('Datetime should not be naive and should be in UTC (pytz.UTC or datetime.timezone.utc)')
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
 
-    def get_friends_of(self, api, screen_name) -> List:
+
+    def get_friends_of(self, api, screen_name)-> List:
         if not api:
             return []
         try:
@@ -289,8 +282,7 @@ class TwitterApi():
                         break
 
                     if number_of_tries % 3 == 0:
-                        print(
-                            f"[FRIENDS] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES. SCREEN_NAME: {screen_name}")
+                        print(f"[FRIENDS] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES. SCREEN_NAME: {screen_name}")
                         time.sleep(300)
 
             followers_screen_names = [friend.screen_name for friend in friends]
@@ -350,7 +342,24 @@ class TwitterApi():
             count = 0
             favorites_authors = []
             while not search_done:
-                favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
+                number_of_tries = 0
+                fail = True
+                favorites = []
+
+                while fail:
+                    try:
+                        favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
+                        fail = False
+                    except Exception as e:
+                        api = self.update_api_instance(number_of_tries)
+                        number_of_tries += 1
+                        if number_of_tries > 10:
+                            print(f'something bad happened. Tried 10 times, it doesn\'t help e: {e}')
+                            break
+                        if number_of_tries % 3 == 0:
+                            print(f"[FAVORITES] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES. SCREEN_NAME: {screen_name}")
+                            time.sleep(300)
+
                 for fav in favorites:
                     post = fav.AsDict()
                     last_id = post['id_str']
@@ -419,16 +428,15 @@ class TwitterApi():
                 text.append(post['text'].replace('\n', ''))
         return ''.join(text)
 
-    def _get_categories(self, posts):
+    def get_categories(self, posts):
         """
         :param posts: list of posts to analyze
         :return: list of unique categories
         """
-        text = self.parse_posts_to_text(posts)
-        print(text)
+        text = self._parse_posts_to_text(posts)
         if not len(text):
             return []
-        natural_language_understanding = self.get_natural_language_understanding('2018-03-16')
+        natural_language_understanding = self._get_natural_language_understanding('2018-03-16')
         categories = []
 
         try:
@@ -465,7 +473,8 @@ class TwitterApi():
     def get_all_hashtags(self, posts):
         hashtags = []
         for post in posts:
-            hashtags.extend(post['hashtags'])
+            hashtags.extend(hashtag['text'] for hashtag in post['hashtags'])
+
         return hashtags
 
 
@@ -505,10 +514,11 @@ class DatasetCollection():
                 user[LIST_OF_RETWEETS_KEY] = retweeted_users  # лист кого ретвител
                 user[LIST_OF_MENTIONS_KEY] = mentioned_users  # лист кого упоминал
                 user[LIST_OF_LIKES_KEY] = favorite_users  # лист кого он лайкал
-                user[LIST_OF_FOLLOWING_KEY] = twitter_search.get_friends_of(api=api, screen_name=screen_name)  # кого он фолловит
+                user[LIST_OF_FOLLOWING_KEY] = twitter_search.get_friends_of(api=twitterSearch.get_api_instance(),
+                                                                            screen_name=screen_name)  # кого он фолловит
                 user[DESCRIPTION_KEY] = posts[0][USER_KEY][DESCRIPTION_KEY]  # описание
                 user[LIST_OF_HASHTAGS_KEY] = twitter_search.get_all_hashtags(posts)  # хештег лист
-                user[LIST_OF_CATEGORIES_KEY] = []  # лист категорий
+                user[LIST_OF_CATEGORIES_KEY] = twitterSearch.get_categories(posts)  # лист категорий
             else:
                 user_req = api.GetUser(screen_name=screen_name)
                 user[SCREEN_NAME_KEY] = screen_name
@@ -542,7 +552,7 @@ class DatasetCollection():
                 result_users.append(line)
         return result_users
 
-    def _get_interaction_vector(self, user_1, user_2) -> Dict:
+    def _get_interaction_vector(self, user_1, user_2)-> Dict:
         """
         Computes interaction vector
         :param user_1:
@@ -554,7 +564,8 @@ class DatasetCollection():
         interaction_vector = {}
         interaction_vector[COMMENTS_INTERACTION] = user_1[LIST_OF_COMMENTS_KEY].count(user_2_screen_name)
         interaction_vector[RETWEETS_INTERACTION] = user_1[LIST_OF_RETWEETS_KEY].count(user_2_screen_name)
-        interaction_vector[FOLLOWING_INTERACTION] = user_1[LIST_OF_FOLLOWING_KEY]
+        interaction_vector[MENTIONS_INTERACTION] = user_1[LIST_OF_MENTIONS_KEY].count(user_2_screen_name)
+        interaction_vector[FOLLOWING_INTERACTION] = user_1[LIST_OF_FOLLOWING_KEY].count(user_2_screen_name)
         interaction_vector[LIKES_INTERACTION] = user_1[LIST_OF_LIKES_KEY].count(user_2_screen_name)
         return interaction_vector
 
@@ -566,20 +577,21 @@ class DatasetCollection():
 
         """
         auxil = {}
+        user = user[USER_KEY]
         # comments  [in timestamp]
-        auxil['COMMENTS'] = len(user['list_of_comments'])
+        auxil['COMMENTS'] = len(user[LIST_OF_COMMENTS_KEY])
         # retweets [in timestamp]
-        auxil['RETWEETS'] = len(user['list_of_retweet'])
+        auxil['RETWEETS'] = len(user[LIST_OF_RETWEETS_KEY])
         # mentions [in timestamp]
-        auxil['MENTIONS'] = len(user['list_of_mention'])
+        auxil['MENTIONS'] = len(user[LIST_OF_MENTIONS_KEY])
         # likes [in timestamp]
-        auxil['LIKES'] = len(user['list_of_likes'])
+        auxil['LIKES'] = len(user[LIST_OF_LIKES_KEY])
         # following [all]
-        auxil['FOLLOWINGS'] = len(user['follow_to'])
+        auxil['FOLLOWINGS'] = len(user[LIST_OF_FOLLOWING_KEY])
 
         return auxil
 
-    def get_pair_user_vectors(self, users: List[Dict]) -> Dict[str, Any]:
+    def get_pair_user_vectors(self, users: List[Dict])-> Dict[str, Any]:
         """
         calculates interactions, similarity and auxiliary variables for pair of users
         to calculate relationship strength
@@ -588,14 +600,16 @@ class DatasetCollection():
         """
         all_user_pairs = {}
         for i, user_1 in enumerate(users):
-            user_screen_name = ''
+            user_screen_name = user_1[USER_KEY][SCREEN_NAME_KEY]
+            user_screen_name = user_screen_name.replace('\n', '')
             user_pairs = {} # consists of user + vector of interaction and similarity
-            user_auxiliary_vars = {}
+            user_auxiliary_vars = self._get_auxilirary_vector(user_1)
             for j, user_2 in enumerate(users):
                 if i != j:
                     interaction_vector = self._get_interaction_vector(user_1=user_1, user_2=user_2)
                     similarity_vector = self.get_user_simlarity_vector(user_1, user_2)
-                    user_2_screen_name = ''
+                    user_2_screen_name = user_2[USER_KEY][SCREEN_NAME_KEY]
+                    user_2_screen_name = user_2_screen_name.replace('\n', '')
                     user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
                                                       SIMILARITY_VECTOR_KEY: similarity_vector}
             user_info = {'auxiliary_vector': user_auxiliary_vars, 'users': user_pairs}
@@ -625,7 +639,7 @@ class DatasetCollection():
         hashtags_1 = set(user_1[LIST_OF_HASHTAGS_KEY])
         hashtags_2 = set(user_2[LIST_OF_HASHTAGS_KEY])
         common_hashtags = list(hashtags_1.intersection(hashtags_2))
-        hashtags_similarity = len(common_hashtags) / len(hashtags_1)
+        hashtags_similarity = len(common_hashtags)/len(hashtags_1)
         categories_1 = user_1[LIST_OF_CATEGORIES_KEY]
         categories_2 = user_2[LIST_OF_CATEGORIES_KEY]
         categories_similarity = twitterSearch.get_categories_similarity(categories_1, categories_2)
@@ -636,6 +650,7 @@ class DatasetCollection():
         similarity[CATEGORIES_SIMILARITY] = categories_similarity
 
         return similarity
+
 
     def _calculate_description_similarity(self, description1, description2) -> float:
         """
@@ -655,7 +670,7 @@ class DatasetCollection():
         similarity = cosine_similarity(vectors)[0, 1]
         return similarity
 
-    def read_users_info(self, file_name: str) -> List:
+    def read_users_info(self, file_name: str)-> List:
         """
         reads information about all user,
         i.e. user account info and posts hashtags and categories
@@ -681,6 +696,7 @@ class DatasetCollection():
         return users_pair_info
 
 
+
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     dataset = DatasetCollection()
@@ -694,3 +710,4 @@ if __name__ == '__main__':
 
     with open('pairs_data.txt', 'w+') as f:
         f.write(data_to_save)
+
