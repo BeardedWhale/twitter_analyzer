@@ -643,13 +643,24 @@ class DatasetCollection():
             f"is_followed_by={is_followed_by} is_followed_by={s_creation_day} s_common_subscriptions={s_common_subscriptions} "
             f"s_hashtag_similarity={s_hashtag_similarity} s_categories_similarity={s_categories_similarity}]")
 
-    def read_users_info(self, file_name: str)-> Dict[]:
+
+    def read_users_info(self, file_name: str)-> Dict:
         file_content = ''
         with open(file_name) as f:
             file_content = f.read()
 
         users_info = json.loads(file_content)
         return users_info
+
+    def get_user_pairs_info_from_file(self, file_name: str) -> Dict:
+        """
+        computes all nessesary vectors for user pairs analysis and saves to file
+        :param file_name: name of file
+        :return:
+        """
+        users_data = self.read_users_info(file_name)
+        users_pair_info = self.get_user_pairs_info()  # returns dictionary
+        data_to_save = json.dump(users_pair_info)
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
