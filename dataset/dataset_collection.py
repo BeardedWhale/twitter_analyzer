@@ -4,7 +4,8 @@ import time
 from typing import Optional, List, Dict, Any, Tuple
 from typing import List, Dict, Any
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
-from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions
+from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions, \
+    ConceptsOptions
 
 import pytz
 import twitter
@@ -176,14 +177,6 @@ class TwitterApi():
                 if author_screen_name == screen_name:
                     retweets.append(post)
         return retweets
-
-    def find_mentions_twitter(self, posts: List[Dict], screen_name: str) -> List[Dict[str, Any]]:
-        """
-
-        :param posts:
-        :param screen_name:
-        :return:
-        """
 
     def get_posts_information(self, posts: List[Dict]) -> Tuple[List, List, List]:
         """
@@ -428,27 +421,36 @@ class TwitterApi():
         )
         return n
 
+    def _parse_posts_to_text(self, posts):
+        text = []
+        for post in posts:
+            if post['lang'] == 'en':
+                text.append(post['text'].replace('\n', ''))
+        return ''.join(text)
+
     def _get_categories(self, posts):
         """
         :param posts: list of posts to analyze
         :return: list of unique categories
         """
-        if not len(posts):
+        text = self.parse_posts_to_text(posts)
+        print(text)
+        if not len(text):
             return []
-        natural_language_understanding = self._get_natural_language_understanding('2018-03-16')
+        natural_language_understanding = self.get_natural_language_understanding('2018-03-16')
         categories = []
-        for post in posts:
-            try:
-                response = natural_language_understanding.analyze(
-                    text=post['text'],
-                    features=Features(categories=CategoriesOptions())).get_result()
-                for category in response['categories']:
-                    for c in category['label'].split('/'):
-                        if c == '' or c in categories:
-                            continue
-                        categories.append(c)
-            except Exception:
-                continue
+
+        try:
+            response = natural_language_understanding.analyze(
+                text=text,
+                features=Features(concepts=ConceptsOptions(limit=20))).get_result()
+            for category in response['concepts']:
+                c = category['text']
+                if c == '' or c in categories:
+                    continue
+                categories.append(c)
+        except Exception:
+            return []
         return categories
 
     # S
@@ -475,7 +477,6 @@ class TwitterApi():
             hashtags.extend(hashtag['text'] for hashtag in post['hashtags'])
 
         return hashtags
-
 
 
 class DatasetCollection():
@@ -566,6 +567,27 @@ class DatasetCollection():
         interaction_vector[FOLLOWING_INTERACTION] = user_1[LIST_OF_FOLLOWING_KEY]
         interaction_vector[LIKES_INTERACTION] = user_1[LIST_OF_LIKES_KEY].count(user_2_screen_name)
         return interaction_vector
+
+    def _get_auxilirary_vector(self, user):
+        """
+
+        :param user: user for whom to return dictionary
+        :return: {COMMENTS: int, RETWEETS: int, MENTIONS:int, LIKES:int, FOLLOWINGS:int}
+
+        """
+        auxil = {}
+        # comments  [in timestamp]
+        auxil['COMMENTS'] = len(user['list_of_comments'])
+        # retweets [in timestamp]
+        auxil['RETWEETS'] = len(user['list_of_retweet'])
+        # mentions [in timestamp]
+        auxil['MENTIONS'] = len(user['list_of_mention'])
+        # likes [in timestamp]
+        auxil['LIKES'] = len(user['list_of_likes'])
+        # following [all]
+        auxil['FOLLOWINGS'] = len(user['follow_to'])
+
+        return auxil
 
     def get_pair_user_vectors(self, users: List[Dict])-> Dict[str, Any]:
         """
@@ -684,6 +706,4 @@ if __name__ == '__main__':
 
     with open('pairs_data.txt', 'w+') as f:
         f.write(data_to_save)
-
-
 
