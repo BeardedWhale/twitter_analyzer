@@ -441,21 +441,18 @@ class TwitterApi():
                     continue
                 categories.append(c)
         except Exception:
-            return -1
+            return []
         return categories
 
     # S
-    def get_categories_similarity(self, posts1, posts2):
+    def get_categories_similarity(self, categories1, categories2):
         """
          Calculates users' similarity of posts based on categories from their posts
         :param posts1: list of posts of the 1st user
         :param posts2: list of posts of the user to compare with
         :return: percentage(number > 0 and < 1) of common categories w.r.t to the 1st user
         """
-        categories1 = self.get_categories(posts1)
-        print(categories1)
-        categories2 = self.get_categories(posts2)
-        print(categories2)
+
         if not len(categories1) or not len(categories2):
             return 0
         count = 0
