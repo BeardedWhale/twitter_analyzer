@@ -17,4 +17,3 @@ DESCRIPTION_SIMILARITY = 'description_similarity'
 FOLLOWING_SIMILARITY = 'following_similarity'
 HASHTAGS_SIMILARITY = 'hashtags_similarity'
 CATEGORIES_SIMILARITY = 'categories_similarity'
-

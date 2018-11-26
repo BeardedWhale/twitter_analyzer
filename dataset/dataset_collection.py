@@ -12,7 +12,7 @@ import json
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
     IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, DESCRIPTION_SIMILARITY, FOLLOWING_SIMILARITY, \
-    DATE_OF_CREATION_SIMILARITY, HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY, INTERACTION_VECTOR_KEY, \
+    HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY, INTERACTION_VECTOR_KEY, \
     SIMILARITY_VECTOR_KEY, NUMBER_OF_COMMENTS_KEY
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -133,6 +133,7 @@ class TwitterApi():
         :param screen_name:
         :return:
         """
+
     def get_posts_information(self, posts: List[Dict]) -> Tuple[List, List, List]:
         """
         Gets a list of all users that were mentioned, commented and retweeted in given posts
@@ -158,7 +159,6 @@ class TwitterApi():
                         user_screen_name = user.get(SCREEN_NAME_KEY, '')
                         commented_users.append(user_screen_name)
         return retweeted_users, mentioned_users, commented_users
-
 
     def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str) -> Dict[str, Any]:
         """
@@ -242,7 +242,11 @@ class TwitterApi():
         if not api:
             return -1
         try:
-            return api.GetFriends(screen_name=screen_name)
+            friends = api.GetFriends(screen_name=screen_name)
+            followers_screen_names = []
+            for friend in friends:
+                followers_screen_names.append(friend.screen_name)
+            return friends
 
         except Exception as e:
             print(f'Exception occured: {e}')
@@ -269,7 +273,7 @@ class TwitterApi():
 
         return -1
 
-    # S TODO check
+    # S
     def common_subscriptions_a_to_b(self, api, screen_name_a: str, screen_name_b: str):
         """
         If user 1 and user 2 are subscribed to one account, the name of the common acc. will be added to result list
@@ -294,7 +298,7 @@ class TwitterApi():
         return -1
 
     def get_favorites_users(self, api, screen_name, since: datetime,
-                            until: datetime = datetime.datetime.now(datetime.timezone.utc))-> List[str]:
+                            until: datetime = datetime.datetime.now(datetime.timezone.utc)) -> List[str]:
         """
         Returns list of people whos posts were liked
         :param api:
@@ -424,7 +428,7 @@ class TwitterApi():
     def get_all_hashtags(self, posts):
         hashtags = []
         for post in posts:
-            hashtags.append(post['hashtags'])
+            hashtags.extend(post['hashtags'])
         return hashtags
 
 
@@ -449,17 +453,15 @@ class DatasetCollection():
             print(screen_name + "\n")
             # print(str(retweets))
             all_posts_with_user = dict()
-            # all_posts_with_user['screen_name'] = screen_name
-            # all_posts_with_user['user'] =
+            user = {}
 
             if len(posts) > 0:
-                user = []
                 user['screen_name'] = screen_name
-                user['list_of_comments'] =  commented_users# лист кого комментировал
-                user['list_of_retweet'] =retweeted_users # лист кого ретвител
-                user['list_of_mention'] = mentioned_users # лист кого упоминал
+                user['list_of_comments'] = commented_users  # лист кого комментировал
+                user['list_of_retweet'] = retweeted_users  # лист кого ретвител
+                user['list_of_mention'] = mentioned_users  # лист кого упоминал
                 user['list_of_likes'] = favorite_users  # лист кого он лайкал
-                user['follow_to'] = twitterSearch.get_followers_of(screen_name=screen_name)  # кого он фолловит
+                user['follow_to'] = twitterSearch.get_followers_of(api=api, screen_name=screen_name)  # кого он фолловит
                 user['description'] = posts[0]['user']['description']  # описание
                 user['creation_at'] = posts[0]['user']['created_at']  # дата создания
                 user['hashtag_list'] = twitterSearch.get_all_hashtags(posts)  # хештег лист
@@ -540,6 +542,22 @@ class DatasetCollection():
         return -1
 
 
+
+    # comments(replays): i commented post of  j
+    # retweets: i retweeted post of j
+    # mentions: i mentioned j in it’s post
+    # following: i is following j
+    # likes: i liked posts of j
+    def _get_interaction_vector(self, twitterSearch: TwitterApi, user_1, user_2):
+        screen_name_1 = user_1['screen_name']
+        screen_name_2 = user_2['screen_name']
+        interation = {}
+        # interation['comments'] = twitterSearch.count_comments_a_to_b(comments_of_a=self._get_all_comments(screen_name=user_1[]))
+        # interation['retweets'] =
+        # interation['mentions'] =
+        # interation['following'] =
+        # interation['likes'] =
+
     def get_pair_user_vectors(self, users: List[Dict])-> Tuple[Dict[str, List]]:
         """
         calculates interactions, similarity and auxiliary variables for pair of users
@@ -548,14 +566,15 @@ class DatasetCollection():
         :return:
         """
         all_user_pairs = {}
-        for i, user in enumerate(users):
+        for i, user_1 in enumerate(users):
             user_screen_name = ''
             user_pairs = {}
-            user_auxiliary_vars = {NUMBER_OF_COMMENTS_KEY: user} # TODO
+            user_auxiliary_vars = {NUMBER_OF_COMMENTS_KEY: user_1} # TODO
             for j, user_2 in enumerate(users):
                 if i != j:
                     interaction_vector = {} # TODO
-                    similarity_vector = self.get_user_simlarity_vector(user, user_2)
+                    self._get_interaction_vector(twitterSearch=twitterSearch, user_1=user_1, user_2=user_2)
+                    similarity_vector = self.get_user_simlarity_vector(user_1, user_2)
                     user_2_screen_name = ''
                     user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
                                                       SIMILARITY_VECTOR_KEY: similarity_vector}
@@ -564,6 +583,30 @@ class DatasetCollection():
 
         return all_user_pairs
 
+    # def find_similarity(self, twitterSearch, screen_name_1, screen_name_2, file):
+    #     posts1 = self._get_all_posts(screen_name=screen_name_1)
+    #     posts2 = self._get_all_posts(screen_name=screen_name_2)
+    #     print("--- Got Posts ---")
+    #
+    #     is_followed_by = twitterSearch.a_is_follower_of_b(api=twitterSearch.get_api_instance(),
+    #                                                       screen_name_a=screen_name_1,
+    #                                                       screen_name_b=screen_name_2)
+    #     s_creation_day = twitterSearch.similarity_creation_date(api=twitterSearch.get_api_instance(),
+    #                                                             screen_name_1=screen_name_1,
+    #                                                             screen_name_2=screen_name_2)
+    #     s_common_subscriptions = twitterSearch.common_subscriptions_a_to_b(api=twitterSearch.get_api_instance(),
+    #                                                                        screen_name_a=screen_name_1,
+    #                                                                        screen_name_b=screen_name_2)
+    #     print("--- Got Simple ---")
+    #
+    #     s_hashtag_similarity = twitterSearch.get_hashtags_similarity(posts1=posts1, posts2=posts2)
+    #     print("Hashtag finished")
+    #     s_categories_similarity = twitterSearch.get_categories_similarity(posts1=posts1, posts2=posts2)
+    #     print("---------")
+    #     file.write(f"similarity {screen_name_1} {screen_name_2}: [")
+    #     file.writelines(
+    #         f"is_followed_by={is_followed_by} is_followed_by={s_creation_day} s_common_subscriptions={s_common_subscriptions} "
+    #         f"s_hashtag_similarity={s_hashtag_similarity} s_categories_similarity={s_categories_similarity}]")
     def get_user_simlarity_vector(self, user_1: Dict, user_2: Dict) -> Dict:
         """
         computes similarity vector for pair of users
@@ -593,7 +636,6 @@ class DatasetCollection():
         categories_similarity = twitterSearch.get_categories_similarity(categories_1, categories_2)
         similarity[FOLLOWING_SIMILARITY] = following_sim
         similarity[DESCRIPTION_SIMILARITY] = description_simlarity
-        similarity[DATE_OF_CREATION_SIMILARITY] = 0
         similarity[HASHTAGS_SIMILARITY] = hashtags_similarity
         similarity[CATEGORIES_SIMILARITY] = categories_similarity
 
@@ -643,7 +685,6 @@ class DatasetCollection():
             f"is_followed_by={is_followed_by} is_followed_by={s_creation_day} s_common_subscriptions={s_common_subscriptions} "
             f"s_hashtag_similarity={s_hashtag_similarity} s_categories_similarity={s_categories_similarity}]")
 
-
     def read_users_info(self, file_name: str)-> Dict:
         file_content = ''
         with open(file_name) as f:
@@ -669,13 +710,15 @@ if __name__ == '__main__':
 
 
     dataset = DatasetCollection()
-    result_file = open("posts_with_users.json", "w")
+    result_file = open("user_data.json", "w")
     with open("accounts.txt") as file:
         posts = []
 
         posts.append(dataset.save_posts_of_user(twitterSearch=twitterSearch, screen_names=dataset.read_users(file),
                                                 file=result_file))
 
+    # with open("user_data.json") as file:
+    #     dataset.get_pair_user_vectors(users=dataset.read_users(file))
 
 
         # s_file = open("similarity_file.json", "w")
