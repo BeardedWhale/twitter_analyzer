@@ -26,15 +26,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 API_KEYS = [{CONSUMER_ID_KEY: 'meq7EApEAfRF8jxpGqr0qxqFX',
              CONSUMER_SECRET_KEY: 'wHPYg8feuE4zvzDRYRXbGeH9d1vaHcVv7Zw03MIon6Y4WbDjE0',
              ACCESS_TOKEN_KEY: '1058944938887409664-GDAlXxbFQYze8gcPDRKYwtebzDhRdq',
-             ACCESS_TOKEN_SECRET: 'IRnR2K9ZDbA4Nt7WrlP4XsxMAj9zC3GCvW7FPNNpwmIMo'},
-            {CONSUMER_ID_KEY: 'ttLrqiM0ejlJyEN7PFiE4CcIqWsuukg6KW7D0srtICFz9',
+             ACCESS_TOKEN_SECRET: 'ttLrqiM0ejlJyEN7PFiE4CcIqWsuukg6KW7D0srtICFz9'},
+            {CONSUMER_ID_KEY: 'pRs7lC697sJpY5FqmxS4Fpy2j',
              CONSUMER_SECRET_KEY: 'CjrPspD8t2Iz9Skk0WfW7pVi6VdwV7oStOn9XlnDzPIA7SWKr6',
              ACCESS_TOKEN_KEY: '1058944938887409664-2wzfwfnccNLFFs742j1Eh4TTVo98v0',
              ACCESS_TOKEN_SECRET: 'IRnR2K9ZDbA4Nt7WrlP4XsxMAj9zC3GCvW7FPNNpwmIMo'},
-            {CONSUMER_ID_KEY: 'meq7EApEAfRF8jxpGqr0qxqFX',
-             CONSUMER_SECRET_KEY: 'wHPYg8feuE4zvzDRYRXbGeH9d1vaHcVv7Zw03MIon6Y4WbDjE0',
-             ACCESS_TOKEN_KEY: '1058944938887409664-GDAlXxbFQYze8gcPDRKYwtebzDhRdq',
-             ACCESS_TOKEN_SECRET: 'ttLrqiM0ejlJyEN7PFiE4CcIqWsuukg6KW7D0srtICFz9'}]
+            {CONSUMER_ID_KEY: 'NC19WDNaMoEaaV9s8nadVUvBI',
+             CONSUMER_SECRET_KEY: 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3',
+             ACCESS_TOKEN_KEY: '1058944938887409664-402KNxXTgNNhMoAK3pmAUziB3Fhxzj',
+             ACCESS_TOKEN_SECRET: 'vVxGZQdN9ubMK1EnxZGx62ZsxVqwFQiwDZmXmEMfPYSKj'}]
 api = None
 
 
@@ -349,7 +349,24 @@ class TwitterApi():
             count = 0
             favorites_authors = []
             while not search_done:
-                favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
+                number_of_tries = 0
+                fail = True
+                favorites = []
+
+                while fail:
+                    try:
+                        favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
+                        fail = False
+                    except Exception as e:
+                        api = self.update_api_instance(number_of_tries)
+                        number_of_tries += 1
+                        if number_of_tries > 10:
+                            print(f'something bad happened. Tried 10 times, it doesn\'t help e: {e}')
+                            break
+                        if number_of_tries % 3 == 0:
+                            print(f"[FAVORITES] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES. SCREEN_NAME: {screen_name}")
+                            time.sleep(300)
+
                 for fav in favorites:
                     post = fav.AsDict()
                     last_id = post['id_str']
@@ -455,7 +472,8 @@ class TwitterApi():
     def get_all_hashtags(self, posts):
         hashtags = []
         for post in posts:
-            hashtags.extend(post['hashtags'])
+            hashtags.extend(hashtag['text'] for hashtag in post['hashtags'])
+
         return hashtags
 
 
@@ -558,14 +576,14 @@ class DatasetCollection():
         """
         all_user_pairs = {}
         for i, user_1 in enumerate(users):
-            user_screen_name = ''
+            user_screen_name = user_1[USER_KEY][SCREEN_NAME_KEY]
             user_pairs = {} # consists of user + vector of interaction and similarity
             user_auxiliary_vars = {}
             for j, user_2 in enumerate(users):
                 if i != j:
                     interaction_vector = self._get_interaction_vector(user_1=user_1, user_2=user_2)
                     similarity_vector = self.get_user_simlarity_vector(user_1, user_2)
-                    user_2_screen_name = ''
+                    user_2_screen_name = user_2[USER_KEY][SCREEN_NAME_KEY]
                     user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
                                                       SIMILARITY_VECTOR_KEY: similarity_vector}
             user_info = {'auxiliary_vector': user_auxiliary_vars, 'users': user_pairs}
