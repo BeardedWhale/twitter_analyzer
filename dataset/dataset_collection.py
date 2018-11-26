@@ -18,7 +18,7 @@ from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, U
     SIMILARITY_VECTOR_KEY, NUMBER_OF_COMMENTS_KEY, LIST_OF_COMMENTS_KEY, COMMENTS_INTERACTION, RETWEETS_INTERACTION, \
     LIST_OF_RETWEETS_KEY, LIST_OF_MENTIONS_KEY, LIST_OF_LIKES_KEY, LIST_OF_FOLLOWING_KEY, FOLLOWING_INTERACTION, \
     LIKES_INTERACTION, DESCRIPTION_KEY, LIST_OF_HASHTAGS_KEY, LIST_OF_CATEGORIES_KEY, CONSUMER_ID_KEY, \
-    CONSUMER_SECRET_KEY, ACCESS_TOKEN_KEY, ACCESS_TOKEN_SECRET
+    CONSUMER_SECRET_KEY, ACCESS_TOKEN_KEY, ACCESS_TOKEN_SECRET, MENTIONS_INTERACTION
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -428,16 +428,15 @@ class TwitterApi():
                 text.append(post['text'].replace('\n', ''))
         return ''.join(text)
 
-    def _get_categories(self, posts):
+    def get_categories(self, posts):
         """
         :param posts: list of posts to analyze
         :return: list of unique categories
         """
-        text = self.parse_posts_to_text(posts)
-        print(text)
+        text = self._parse_posts_to_text(posts)
         if not len(text):
             return []
-        natural_language_understanding = self.get_natural_language_understanding('2018-03-16')
+        natural_language_understanding = self._get_natural_language_understanding('2018-03-16')
         categories = []
 
         try:
@@ -515,10 +514,11 @@ class DatasetCollection():
                 user[LIST_OF_RETWEETS_KEY] = retweeted_users  # лист кого ретвител
                 user[LIST_OF_MENTIONS_KEY] = mentioned_users  # лист кого упоминал
                 user[LIST_OF_LIKES_KEY] = favorite_users  # лист кого он лайкал
-                user[LIST_OF_FOLLOWING_KEY] = twitter_search.get_friends_of(api=api, screen_name=screen_name)  # кого он фолловит
+                user[LIST_OF_FOLLOWING_KEY] = twitter_search.get_friends_of(api=twitterSearch.get_api_instance(),
+                                                                            screen_name=screen_name)  # кого он фолловит
                 user[DESCRIPTION_KEY] = posts[0][USER_KEY][DESCRIPTION_KEY]  # описание
                 user[LIST_OF_HASHTAGS_KEY] = twitter_search.get_all_hashtags(posts)  # хештег лист
-                user[LIST_OF_CATEGORIES_KEY] = []  # лист категорий
+                user[LIST_OF_CATEGORIES_KEY] = twitterSearch.get_categories(posts)  # лист категорий
             else:
                 user_req = api.GetUser(screen_name=screen_name)
                 user[SCREEN_NAME_KEY] = screen_name
@@ -564,7 +564,8 @@ class DatasetCollection():
         interaction_vector = {}
         interaction_vector[COMMENTS_INTERACTION] = user_1[LIST_OF_COMMENTS_KEY].count(user_2_screen_name)
         interaction_vector[RETWEETS_INTERACTION] = user_1[LIST_OF_RETWEETS_KEY].count(user_2_screen_name)
-        interaction_vector[FOLLOWING_INTERACTION] = user_1[LIST_OF_FOLLOWING_KEY]
+        interaction_vector[MENTIONS_INTERACTION] = user_1[LIST_OF_MENTIONS_KEY].count(user_2_screen_name)
+        interaction_vector[FOLLOWING_INTERACTION] = user_1[LIST_OF_FOLLOWING_KEY].count(user_2_screen_name)
         interaction_vector[LIKES_INTERACTION] = user_1[LIST_OF_LIKES_KEY].count(user_2_screen_name)
         return interaction_vector
 
@@ -576,16 +577,17 @@ class DatasetCollection():
 
         """
         auxil = {}
+        user = user[USER_KEY]
         # comments  [in timestamp]
-        auxil['COMMENTS'] = len(user['list_of_comments'])
+        auxil['COMMENTS'] = len(user[LIST_OF_COMMENTS_KEY])
         # retweets [in timestamp]
-        auxil['RETWEETS'] = len(user['list_of_retweet'])
+        auxil['RETWEETS'] = len(user[LIST_OF_RETWEETS_KEY])
         # mentions [in timestamp]
-        auxil['MENTIONS'] = len(user['list_of_mention'])
+        auxil['MENTIONS'] = len(user[LIST_OF_MENTIONS_KEY])
         # likes [in timestamp]
-        auxil['LIKES'] = len(user['list_of_likes'])
+        auxil['LIKES'] = len(user[LIST_OF_LIKES_KEY])
         # following [all]
-        auxil['FOLLOWINGS'] = len(user['follow_to'])
+        auxil['FOLLOWINGS'] = len(user[LIST_OF_FOLLOWING_KEY])
 
         return auxil
 
@@ -599,13 +601,15 @@ class DatasetCollection():
         all_user_pairs = {}
         for i, user_1 in enumerate(users):
             user_screen_name = user_1[USER_KEY][SCREEN_NAME_KEY]
+            user_screen_name = user_screen_name.replace('\n', '')
             user_pairs = {} # consists of user + vector of interaction and similarity
-            user_auxiliary_vars = {}
+            user_auxiliary_vars = self._get_auxilirary_vector(user_1)
             for j, user_2 in enumerate(users):
                 if i != j:
                     interaction_vector = self._get_interaction_vector(user_1=user_1, user_2=user_2)
                     similarity_vector = self.get_user_simlarity_vector(user_1, user_2)
                     user_2_screen_name = user_2[USER_KEY][SCREEN_NAME_KEY]
+                    user_2_screen_name = user_2_screen_name.replace('\n', '')
                     user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
                                                       SIMILARITY_VECTOR_KEY: similarity_vector}
             user_info = {'auxiliary_vector': user_auxiliary_vars, 'users': user_pairs}
