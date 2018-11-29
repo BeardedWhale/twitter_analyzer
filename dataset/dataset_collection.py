@@ -117,7 +117,7 @@ class TwitterApi():
                     except Exception as e:
                         api = self.update_api_instance(number_of_tries)
                         number_of_tries +=1
-                        if number_of_tries > 10:
+                        if number_of_tries > 9:
                             print(f'something bad happened. Tried 10 times, it doesn\'t help e: {e}')
                             break
                         if number_of_tries%3 == 0:
@@ -272,7 +272,7 @@ class TwitterApi():
             friends = []
             while fail:
                 try:
-                    friends = api.GetFriends(screen_name=screen_name)
+                    friends = api.GetFriends(screen_name=screen_name, total_count=200)
                     fail = False
                 except Exception as e:
                     api = self.update_api_instance(number_of_tries)
@@ -353,7 +353,9 @@ class TwitterApi():
                     except Exception as e:
                         api = self.update_api_instance(number_of_tries)
                         number_of_tries += 1
-                        if number_of_tries > 10:
+                        if number_of_tries > 5:
+                            favorites = []
+                            search_done = True
                             print(f'something bad happened. Tried 10 times, it doesn\'t help e: {e}')
                             break
                         if number_of_tries % 3 == 0:
@@ -705,9 +707,9 @@ if __name__ == '__main__':
     dataset.save_posts_of_user(twitter_search=twitterSearch,
                                screen_names=dataset.read_users('accounts.txt'),
                                file_name=file_name)
-    users_pair_info = dataset.get_user_pairs_info_from_file(file_name)
-    data_to_save = json.dumps(users_pair_info)
-
-    with open('pairs_data.txt', 'w+') as f:
-        f.write(data_to_save)
+    # users_pair_info = dataset.get_user_pairs_info_from_file(file_name)
+    # data_to_save = json.dumps(users_pair_info)
+    #
+    # with open('pairs_data.txt', 'w+') as f:
+    #     f.write(data_to_save)
 
