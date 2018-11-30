@@ -641,7 +641,9 @@ class DatasetCollection():
         hashtags_1 = set(user_1[LIST_OF_HASHTAGS_KEY])
         hashtags_2 = set(user_2[LIST_OF_HASHTAGS_KEY])
         common_hashtags = list(hashtags_1.intersection(hashtags_2))
-        hashtags_similarity = len(common_hashtags)/len(hashtags_1)
+        hashtags_similarity = 0
+        if len(hashtags_1) != 0:
+            hashtags_similarity = len(common_hashtags)/len(hashtags_1)
         categories_1 = user_1[LIST_OF_CATEGORIES_KEY]
         categories_2 = user_2[LIST_OF_CATEGORIES_KEY]
         categories_similarity = twitterSearch.get_categories_similarity(categories_1, categories_2)
@@ -702,14 +704,15 @@ class DatasetCollection():
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
     dataset = DatasetCollection()
-    posts = []
-    file_name = "user_data.json"
-    dataset.save_posts_of_user(twitter_search=twitterSearch,
-                               screen_names=dataset.read_users('accounts.txt'),
-                               file_name=file_name)
-    # users_pair_info = dataset.get_user_pairs_info_from_file(file_name)
-    # data_to_save = json.dumps(users_pair_info)
+    # posts = []
+    # file_name = "user_data.json"
+    # dataset.save_posts_of_user(twitter_search=twitterSearch,
+    #                            screen_names=dataset.read_users('accounts.txt'),
+    #                            file_name=file_name)
+    file_name = 'user_whole_data.txt'
+    users_pair_info = dataset.get_user_pairs_info_from_file(file_name)
+    data_to_save = json.dumps(users_pair_info)
     #
-    # with open('pairs_data.txt', 'w+') as f:
-    #     f.write(data_to_save)
+    with open('pairs_data.txt', 'w+') as f:
+        f.write(data_to_save)
 
