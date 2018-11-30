@@ -24,11 +24,12 @@ While not converged:
 
 Note: relationships between users are not bidirectional, i.e. z(i,j)!=z(j,i)
 """
-
+import sys
 from typing import Tuple
 import numpy as np
 
 from math import exp
+import json
 
 VARIANCE = 0.5
 LAMBDA_W = 0.5
@@ -60,9 +61,9 @@ def learning_algorithm(variance: int, w: np.array, s: np.array, z: np.array, y: 
         while dtheta > error:
             dtheta, new_theta = update_theta(new_z, y, new_theta, a)
 
-        dz, new_theta = update_z(variance, new_w, s, new_z, new_theta, a)
+        dz, new_theta = update_z(variance, new_w, s, new_z, y, new_theta, a)
         while dz > error:
-            dz, new_z = update_z(variance, new_w, s, new_z, new_theta, a)
+            dz, new_z = update_z(variance, new_w, s, new_z, y, new_theta, a)
 
         new_w = update_w(s, new_z, new_w)
 
@@ -169,7 +170,10 @@ def theta_second_gradient(z: np.array, y: np.array, theta: np.array,
             a_t = a[pair, t]
             u_t = np.concatenate(([a_t], z_pair))
             exp = _get_exponent(pair, t, theta, z, a)
-            term1 = y[pair, t] - exp / (1.0 - exp) ** 2
+            try:
+                term1 = y[pair, t] - exp / (1.0 - exp) ** 2
+            except Exception:
+                term1 = sys.maxsize
             term2 = u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).dot(
                 u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).transpose())
             sum = np.add(sum, term2.dot(term1))
@@ -228,7 +232,7 @@ def z_second_gradient(variance: int, theta: np.array, a: np.array, z: np.array) 
         sum_of_interactions = 0
         for t in range(NUMBER_OF_INTERACTIONS):
             theta_t = theta[t]  # shape: (1, 2)
-            theta_parameter_for_z = theta_t[0, NUMBER_OF_AUXILIARY_VARIABLES]  # number
+            theta_parameter_for_z = theta_t[NUMBER_OF_AUXILIARY_VARIABLES]  # number
             exponent = _get_exponent(i, t, theta, z, a)
             intermediate_result = (theta_parameter_for_z ** 2) * exponent / ((1 + exponent) ** 2)
             sum_of_interactions += intermediate_result
@@ -253,15 +257,68 @@ def _get_exponent(pair_index: int, interaction_index: int, theta: np.array, z: n
     z_i = z[pair_index]
     a_t = a[pair_index, interaction_index]
     u_t = np.concatenate(([a_t], z_i))
-    exponent_power = - 1.0 * (theta[interaction_index].dot(u_t) + b)[0, 0]  # number; without [0,0] shape: (1,1)
-    return exp(exponent_power)
+    exponent_power = - 1.0 * (theta[interaction_index].dot(u_t) + b)  # number; without [0,0] shape: (1,1)
+    try:
+        return exp(exponent_power)
+    except Exception:
+        return sys.maxsize
+        print(exponent_power)
 
 
-# TODO Remove
-n = 4  # number of similarity measures
-number_of_pairs = 100
-S = initialize_parameter(SIMILARITY_MATRIX_SIZE, 0.5, 0.5)
+def load_data(file):
+    """
+    Load data from file
+    :param file: file to read from
+    :return: A_MATRIX shape = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS),
+             SIMILARITY_MATRIX shape = (NUMBER_OF_PAIRS, NUMBER_OF_SIMILARITIES),
+             Y_MATRIX shape = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS),
+             list of pairs: (screen_name1, screen_name2)
+    """
+    similarity_matrix = []
+    a_matrix = []
+    y_matrix = []
+    pairs = []
+    with open(file) as f:
+        data = json.load(f)
+        users = data.keys()
+        for user in users:
+            auxilirary_values = _order_dictionary(data[user]['auxiliary_vector'])
+            subusers = data[user]['users']
+            for subuser in subusers:
+                pairs.append((user, subuser))
+                a_matrix.append(auxilirary_values)
+                print(list(subusers[subuser]['similarity_vector'].values()))
+                similarity_matrix.append(list(subusers[subuser]['similarity_vector'].values()))
+                y_matrix.append(_order_dictionary(subusers[subuser]['interaction_vector']))
+    return a_matrix, y_matrix, similarity_matrix, pairs
 
-w = initialize_parameter(W_MATRIX_SIZE, 0.5, 0.5)
 
-z = initialize_parameter(Z_MATRIX_SIZE, 0.5, 0.5)
+def _order_dictionary(dict):
+    """
+    Orders given dictionary by keys
+    Puts result into a new list
+    :param dict:
+    :return: new list
+    """
+    ordering = ['comment', 'retweet', 'mention', 'like', 'follow']
+    ordered = []
+    while len(ordered) != len(ordering):
+        for key in dict:
+            if len(ordered) == len(ordering):
+                break
+            if ordering[len(ordered)] in key.lower():
+                ordered.append(dict[key])
+    return ordered
+
+
+a_matrix, y_matrix, similarity_matrix, pairs = load_data(
+    file='pairs_data.txt')
+mu, sigma = 0.5, 0.5
+a_matrix = np.array(a_matrix)
+y_matrix = np.array(y_matrix)
+similarity_matrix = np.array(similarity_matrix)
+weight = np.ones(shape=W_MATRIX_SIZE)
+z = np.random.normal(mu, sigma, Z_MATRIX_SIZE)
+theta = np.random.normal(mu, sigma, THETA_MATRIX_SIZE)
+learning_algorithm(sigma, weight, similarity_matrix, z, y_matrix, theta, a_matrix)
+print("qwerty")
