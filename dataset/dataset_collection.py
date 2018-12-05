@@ -1,38 +1,76 @@
 import locale
 from pprint import pprint
-from typing import Optional, List, Dict, Any
+import time
+from typing import Optional, List, Dict, Any, Tuple
 from typing import List, Dict, Any
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
-from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions
+from watson_developer_cloud.natural_language_understanding_v1 import Features, CategoriesOptions, KeywordsOptions, \
+    ConceptsOptions
 
 import pytz
 import twitter
 import datetime
+import json
 
 from dataset.constants import RETWEETED_STATUS_KEY, USER_KEY, SCREEN_NAME_KEY, USER_MENTIONS_KEY, \
     IN_REPLY_TO_SCREEN_NAME_KEY, RETWEETS_KEY, MENTIONS_KEY, COMMENTS_KEY, DESCRIPTION_SIMILARITY, FOLLOWING_SIMILARITY, \
-    DATE_OF_CREATION_SIMILARITY, HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY
+    HASHTAGS_SIMILARITY, CATEGORIES_SIMILARITY, INTERACTION_VECTOR_KEY, \
+    SIMILARITY_VECTOR_KEY, NUMBER_OF_COMMENTS_KEY, LIST_OF_COMMENTS_KEY, COMMENTS_INTERACTION, RETWEETS_INTERACTION, \
+    LIST_OF_RETWEETS_KEY, LIST_OF_MENTIONS_KEY, LIST_OF_LIKES_KEY, LIST_OF_FOLLOWING_KEY, FOLLOWING_INTERACTION, \
+    LIKES_INTERACTION, DESCRIPTION_KEY, LIST_OF_HASHTAGS_KEY, LIST_OF_CATEGORIES_KEY, CONSUMER_ID_KEY, \
+    CONSUMER_SECRET_KEY, ACCESS_TOKEN_KEY, ACCESS_TOKEN_SECRET, MENTIONS_INTERACTION
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-consumer_id_key = 'NC19WDNaMoEaaV9s8nadVUvBI'
-consumer_secret_key = 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3'
-access_token_key = '1058944938887409664-402KNxXTgNNhMoAK3pmAUziB3Fhxzj'
-access_token_secret = 'vVxGZQdN9ubMK1EnxZGx62ZsxVqwFQiwDZmXmEMfPYSKj'
+
+
+API_KEYS = [{CONSUMER_ID_KEY: 'meq7EApEAfRF8jxpGqr0qxqFX',
+             CONSUMER_SECRET_KEY: 'wHPYg8feuE4zvzDRYRXbGeH9d1vaHcVv7Zw03MIon6Y4WbDjE0',
+             ACCESS_TOKEN_KEY: '1058944938887409664-GDAlXxbFQYze8gcPDRKYwtebzDhRdq',
+             ACCESS_TOKEN_SECRET: 'ttLrqiM0ejlJyEN7PFiE4CcIqWsuukg6KW7D0srtICFz9'},
+            {CONSUMER_ID_KEY: 'pRs7lC697sJpY5FqmxS4Fpy2j',
+             CONSUMER_SECRET_KEY: 'CjrPspD8t2Iz9Skk0WfW7pVi6VdwV7oStOn9XlnDzPIA7SWKr6',
+             ACCESS_TOKEN_KEY: '1058944938887409664-2wzfwfnccNLFFs742j1Eh4TTVo98v0',
+             ACCESS_TOKEN_SECRET: 'IRnR2K9ZDbA4Nt7WrlP4XsxMAj9zC3GCvW7FPNNpwmIMo'},
+            {CONSUMER_ID_KEY: 'NC19WDNaMoEaaV9s8nadVUvBI',
+             CONSUMER_SECRET_KEY: 'rtoYVT9AykdYQWWv5Nh7ZdDode72DRSLX8XswRrqprxhC2TnI3',
+             ACCESS_TOKEN_KEY: '1058944938887409664-402KNxXTgNNhMoAK3pmAUziB3Fhxzj',
+             ACCESS_TOKEN_SECRET: 'vVxGZQdN9ubMK1EnxZGx62ZsxVqwFQiwDZmXmEMfPYSKj'}]
 api = None
 
 
 class TwitterApi():
+
+    current_keys_index = 0
     def get_api_instance(self):
         global api
         if api:
             return api
-        api = twitter.Api(consumer_key=consumer_id_key,
-                          consumer_secret=consumer_secret_key,
-                          access_token_key=access_token_key,
-                          access_token_secret=access_token_secret)
+        keys = API_KEYS[0]
+        api = twitter.Api(consumer_key=keys[CONSUMER_ID_KEY],
+                          consumer_secret=keys[CONSUMER_SECRET_KEY],
+                          access_token_key=keys[ACCESS_TOKEN_KEY],
+                          access_token_secret=keys[ACCESS_TOKEN_SECRET])
         api.VerifyCredentials()
         return api
+
+    def update_api_instance(self, keys_index: int = 0):
+        """
+        Updates api instance in case of rate limit
+        :param keys_index:
+        :return:
+        """
+        global api
+        keys_index = keys_index%len(API_KEYS)
+        api.ClearCredentials()
+        keys = API_KEYS[keys_index]
+        api.SetCredentials(consumer_key=keys[CONSUMER_ID_KEY],
+                           consumer_secret=keys[CONSUMER_SECRET_KEY],
+                           access_token_key=keys[ACCESS_TOKEN_KEY],
+                           access_token_secret=keys[ACCESS_TOKEN_SECRET])
+        api.VerifyCredentials()
+        return api
+
 
     def find_posts_twitter(self, api, screen_name: str, pool_amount: int, since: datetime,
                            until: datetime = datetime.datetime.now(datetime.timezone.utc)) -> List[Dict[str, Any]]:
@@ -69,7 +107,23 @@ class TwitterApi():
             first_cycle = True
             while (count < pool_amount or pool_amount == -1) and not search_finish:
                 count_to_request = 200
-                time_line = api.GetUserTimeline(screen_name=screen_name, count=count_to_request, max_id=last_id)
+                number_of_tries = 0
+                fail = True
+                time_line = []
+                while fail:
+                    try:
+                        time_line = api.GetUserTimeline(screen_name=screen_name, count=count_to_request, max_id=last_id)
+                        fail = False
+                    except Exception as e:
+                        api = self.update_api_instance(number_of_tries)
+                        number_of_tries +=1
+                        if number_of_tries > 10:
+                            print(f'something bad happened. Tried 10 times, it doesn\'t help e: {e}')
+                            break
+                        if number_of_tries%3 == 0:
+                            print("[TIMELINE] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES")
+                            time.sleep(300)
+
                 if not time_line:
                     break
 
@@ -124,13 +178,31 @@ class TwitterApi():
                     retweets.append(post)
         return retweets
 
-    def find_mentions_twitter(self, posts: List[Dict], screen_name: str) -> List[Dict[str, Any]]:
+    def get_posts_information(self, posts: List[Dict]) -> Tuple[List, List, List]:
         """
-
+        Gets a list of all users that were mentioned, commented and retweeted in given posts
         :param posts:
-        :param screen_name:
         :return:
         """
+        retweeted_users = []
+        mentioned_users = []
+        commented_users = []
+        for post in posts:
+            if RETWEETED_STATUS_KEY in post:
+                retweet_info = post.get(RETWEETED_STATUS_KEY, {})
+                retweet_author = retweet_info.get(USER_KEY, {})
+                author_screen_name = retweet_author.get(SCREEN_NAME_KEY, '')
+                retweeted_users.append(author_screen_name)
+            if USER_MENTIONS_KEY in post:
+                if IN_REPLY_TO_SCREEN_NAME_KEY in post:
+                    reply_screen_name = post.get(IN_REPLY_TO_SCREEN_NAME_KEY, '')
+                    commented_users.append(reply_screen_name)
+                else:
+                    users_mentioned = post.get(USER_MENTIONS_KEY, [])
+                    for user in users_mentioned:
+                        user_screen_name = user.get(SCREEN_NAME_KEY, '')
+                        commented_users.append(user_screen_name)
+        return retweeted_users, mentioned_users, commented_users
 
     def find_user_interactions_in_posts(self, posts: List[Dict], screen_name: str) -> Dict[str, Any]:
         """
@@ -191,57 +263,46 @@ class TwitterApi():
         return date.strftime('%Y-%m-%dT%H:%M:%S%z')
 
 
-    def a_is_follower_of_b(self, api, screen_name_a: str, screen_name_b: str):
-        """
-        Is screen_name_1 subscriber of screen_name_2?
-        :return: True or False depending on
-        """
-
+    def get_friends_of(self, api, screen_name)-> List:
         if not api:
-            return -1
+            return []
         try:
-            followers = api.GetFriends(screen_name=screen_name_a)
+            number_of_tries = 0
+            fail = True
+            friends = []
+            while fail:
+                try:
+                    friends = api.GetFriends(screen_name=screen_name)
+                    fail = False
+                except Exception as e:
+                    api = self.update_api_instance(number_of_tries)
+                    number_of_tries += 1
+                    if number_of_tries > 10:
+                        print(f'something bad happend. Tried 10 times, it doesn\'t help e: {e}')
+                        break
 
-            for user in followers:
-                if user.screen_name == screen_name_b:
-                    return True
+                    if number_of_tries % 3 == 0:
+                        print(f"[FRIENDS] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES. SCREEN_NAME: {screen_name}")
+                        time.sleep(300)
 
-            return False
+            followers_screen_names = [friend.screen_name for friend in friends]
+
+            return followers_screen_names
+
         except Exception as e:
             print(f'Exception occured: {e}')
-        return -1
+        return []
 
-
-    def similarity_creation_date(self, api, screen_name_1, screen_name_2):
-        """
-        The absolute value of difference. max is 1, min is lim->0. Counts as 1/Absolute_Value[user_date_1 - user_date_2]
-        :return: max 1 | min 0
-        """
-
-        if not api:
-            return -1
-        try:
-            user_1 = api.GetUser(screen_name=screen_name_1)
-            user_2 = api.GetUser(screen_name=screen_name_2)
-
-            date_user_1 = self.get_tweet_date(date=user_1.created_at)
-            date_user_2 = self.get_tweet_date(date=user_2.created_at)
-            return 1 / (abs(date_user_2 - date_user_1).days)
-        except Exception as e:
-            print(f'Exception occured: {e}')
-
-        return -1
-
-
-    def common_subscriptions(self, api, screen_name_1: str, screen_name_2: str):
+    # S
+    def common_subscriptions_a_to_b(self, api, screen_name_a: str, screen_name_b: str):
         """
         If user 1 and user 2 are subscribed to one account, the name of the common acc. will be added to result list
         """
         if not api:
             return -1
         try:
-            friends_1 = api.GetFriends(screen_name=screen_name_1)
-            friends_2 = api.GetFriends(screen_name=screen_name_2)
+            friends_1 = api.GetFriends(screen_name=screen_name_a)
+            friends_2 = api.GetFriends(screen_name=screen_name_b)
 
             common_list = []
 
@@ -250,16 +311,16 @@ class TwitterApi():
                     if friend_2.screen_name == friend_1.screen_name:
                         common_list.append(friend_1.screen_name)
 
-            return common_list
+            return len(common_list) / len(friends_1)
         except Exception as e:
             print(f'Exception occured: {e}')
 
         return -1
 
-
-    def get_favorites_count(self, api, screen_name, screen_name2: str, since: datetime,
-                            until: datetime = datetime.datetime.now(datetime.timezone.utc)):
+    def get_favorites_users(self, api, screen_name, since: datetime,
+                            until: datetime = datetime.datetime.now(datetime.timezone.utc)) -> List[str]:
         """
+        Returns list of people whos posts were liked
         :param api:
         :param screen_name:
         :param screen_name2:
@@ -269,34 +330,51 @@ class TwitterApi():
                 -1 on error
         """
         if not api:
-            return -1
+            return []
 
         try:
             since, until = self.parse_time_interval(since, until)
             if since and until and since > until:
-                return -1
+                return []
 
             search_done = False
             last_id = ''
             count = 0
+            favorites_authors = []
             while not search_done:
-                favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
+                number_of_tries = 0
+                fail = True
+                favorites = []
+
+                while fail:
+                    try:
+                        favorites = api.GetFavorites(screen_name=screen_name, count=200, since_id=last_id)
+                        fail = False
+                    except Exception as e:
+                        api = self.update_api_instance(number_of_tries)
+                        number_of_tries += 1
+                        if number_of_tries > 10:
+                            print(f'something bad happened. Tried 10 times, it doesn\'t help e: {e}')
+                            break
+                        if number_of_tries % 3 == 0:
+                            print(f"[FAVORITES] ALL KEYS LIMIT EXCEEDED. GOING TO SLEEP FOR 5 MINUTES. SCREEN_NAME: {screen_name}")
+                            time.sleep(300)
+
                 for fav in favorites:
                     post = fav.AsDict()
                     last_id = post['id_str']
                     if ((not since or since <= self.get_tweet_date(post['created_at'])) and
                             (not until or until > self.get_tweet_date(post['created_at']))):
-                        if post['user']['screen_name'] == screen_name2:
-                            count += 1
+                        post_author = post['user']['screen_name']
+                        favorites_authors.append(post_author)
                     elif since > self.get_tweet_date(post['created_at']):
                         search_done = True
                         break
 
-            return count
+            return favorites_authors
         except Exception as e:
             print(f'Exception occured: {e}')
-            return -1
-
+            return []
 
     def parse_time_interval(self, since, until: datetime):
         if not since:
@@ -309,37 +387,7 @@ class TwitterApi():
 
         return since, until
 
-
-    def get_followers_similarity(self, api, screen_name, screen_name2):
-        """
-        Calculates followers similarity between two users
-        :param api:
-        :param screen_name:
-        :param screen_name2:
-        :return: percentage(number > 0 and < 1) of common followers w.r.t screen_name
-                -1 on error
-        """
-        if not api:
-            return -1
-        try:
-            followers = api.GetFollowers(screen_name=screen_name)
-            followers2 = api.GetFollowers(screen_name=screen_name2)
-
-            count = 0
-            if not len(followers2) or not len(followers):
-                return 0
-            for i in followers:
-                for j in followers2:
-                    if i == j:
-                        count += 1
-            print(count)
-            return count / len(followers)
-
-        except Exception as e:
-            print(f'Exception occured: {e}')
-        return -1
-
-
+    # S
     def get_hashtags_similarity(self, posts1, posts2):
         """
         Calculates similarity of posts of two users based on hashtags
@@ -365,8 +413,7 @@ class TwitterApi():
                     count += 1
         return count / len(tags1)
 
-
-    def get_natural_language_understanding(self, version):
+    def _get_natural_language_understanding(self, version):
         n = NaturalLanguageUnderstandingV1(
             version=version,
             iam_apikey='SGjJgUAGXQEdbXiRe27u2V4hmeMIrEESo0vcXrfCunLL',
@@ -374,82 +421,46 @@ class TwitterApi():
         )
         return n
 
-
-    def get_keywords(self, posts):
-        """
-        Retreives at most 3 keywords from given posts
-        :param posts: list of posts to analyze
-        :return: list of keywords
-        """
-        if not len(posts):
-            return []
-        natural_language_understanding = self.get_natural_language_understanding('2018-09-21')
-        keywords = []
+    def _parse_posts_to_text(self, posts):
+        text = []
         for post in posts:
-            response = natural_language_understanding.analyze(
-                text=post['text'], features=Features(
-                    keywords=KeywordsOptions(limit=3))).get_result()
-            for word in response['keywords']:
-                keywords.append(word['text'])
-        return keywords
-
-
-    def get_keywords_similarity(self, posts1, posts2):
-        """
-        Calculates users' similarity of posts based on keywords from their posts
-        :param posts1: list of posts of the 1st user
-        :param posts2: list of posts of the user to compare with
-        :return: percentage(number > 0 and < 1) of common keywords w.r.t 1st user
-        """
-        keywords1 = self.get_keywords(posts1)
-        keywords2 = self.get_keywords(posts2)
-        print(keywords1)
-        print(keywords2)
-        if not len(keywords1) or not len(keywords2):
-            return 0
-        count = 0
-        for word1 in keywords1:
-            for word2 in keywords2:
-                if word1 == word2:
-                    count += 1
-        return count / len(keywords1)
-
+            if post['lang'] == 'en':
+                text.append(post['text'].replace('\n', ''))
+        return ''.join(text)
 
     def get_categories(self, posts):
         """
         :param posts: list of posts to analyze
         :return: list of unique categories
         """
-        if not len(posts):
+        text = self._parse_posts_to_text(posts)
+        if not len(text):
             return []
-        natural_language_understanding = self.get_natural_language_understanding('2018-03-16')
+        natural_language_understanding = self._get_natural_language_understanding('2018-03-16')
         categories = []
-        for post in posts:
-            try:
-                response = natural_language_understanding.analyze(
-                    text=post['text'],
-                    features=Features(categories=CategoriesOptions())).get_result()
-                for category in response['categories']:
-                    for c in category['label'].split('/'):
-                        if c == '' or c in categories:
-                            continue
-                        categories.append(c)
-            except Exception:
-                continue
+
+        try:
+            response = natural_language_understanding.analyze(
+                text=text,
+                features=Features(concepts=ConceptsOptions(limit=20))).get_result()
+            for category in response['concepts']:
+                c = category['text']
+                if c == '' or c in categories:
+                    continue
+                categories.append(c)
+        except Exception:
+            return []
         return categories
 
-
-    def get_categories_similarity(self, posts1, posts2):
+    # S
+    def get_categories_similarity(self, categories1, categories2):
         """
          Calculates users' similarity of posts based on categories from their posts
         :param posts1: list of posts of the 1st user
         :param posts2: list of posts of the user to compare with
         :return: percentage(number > 0 and < 1) of common categories w.r.t to the 1st user
         """
-        categories1 = self.get_categories(posts1)
-        print(categories1)
-        categories2 = self.get_categories(posts2)
-        print(categories2)
+
         if not len(categories1) or not len(categories2):
             return 0
         count = 0
@@ -459,33 +470,196 @@ class TwitterApi():
                     count += 1
         return count / len(categories1)
 
+    def get_all_hashtags(self, posts):
+        hashtags = []
+        for post in posts:
+            hashtags.extend(hashtag['text'] for hashtag in post['hashtags'])
 
-    def calculate_users_similarity(self, user1: Dict[str, Any], user2: Dict[str,Any])->Dict:
+        return hashtags
+
+
+class DatasetCollection():
+
+
+    def save_posts_of_user(self, twitter_search: TwitterApi, screen_names, file_name):
         """
-        Calculates similarity between users
-        :param user1: dictionary with information about user1
-        :param user2: dictionary with information about user2
-        :return: similarity values
+        Gets users info and posts, analyses this information and saves it to file
+        :param twitter_search: instance of TwitterApi
+        :param screen_names: names of users
+        :param file_name: file to save posts
+        :return: nothing
+        """
+        all_users = []
+        for screen_name in screen_names:
+
+            posts = twitter_search.find_posts_twitter(api=twitter_search.get_api_instance(), screen_name=screen_name,
+                                                      pool_amount=-1,
+                                                      since=datetime.datetime.now(
+                                                         datetime.timezone.utc) - datetime.timedelta(31),
+                                                      until=datetime.datetime.now(
+                                                         datetime.timezone.utc))
+
+            retweeted_users, mentioned_users, commented_users = twitter_search.get_posts_information(posts)
+            favorite_users = twitter_search.get_favorites_users(twitterSearch.get_api_instance(), screen_name,
+                                                                since=datetime.datetime.now(datetime.timezone.utc)
+                                                                - datetime.timedelta(90),
+                                                                until=datetime.datetime.now(datetime.timezone.utc))
+            print(screen_name + "\n")
+            all_posts_with_user = {}
+            user = {}
+
+            if len(posts) > 0:
+                user[SCREEN_NAME_KEY] = screen_name
+                user[LIST_OF_COMMENTS_KEY] = commented_users  # лист кого комментировал
+                user[LIST_OF_RETWEETS_KEY] = retweeted_users  # лист кого ретвител
+                user[LIST_OF_MENTIONS_KEY] = mentioned_users  # лист кого упоминал
+                user[LIST_OF_LIKES_KEY] = favorite_users  # лист кого он лайкал
+                user[LIST_OF_FOLLOWING_KEY] = twitter_search.get_friends_of(api=twitterSearch.get_api_instance(),
+                                                                            screen_name=screen_name)  # кого он фолловит
+                user[DESCRIPTION_KEY] = posts[0][USER_KEY][DESCRIPTION_KEY]  # описание
+                user[LIST_OF_HASHTAGS_KEY] = twitter_search.get_all_hashtags(posts)  # хештег лист
+                user[LIST_OF_CATEGORIES_KEY] = twitterSearch.get_categories(posts)  # лист категорий
+            else:
+                user_req = api.GetUser(screen_name=screen_name)
+                user[SCREEN_NAME_KEY] = screen_name
+                user[LIST_OF_COMMENTS_KEY] = []  # лист кого комментировал
+                user[LIST_OF_RETWEETS_KEY] = []  # лист кого ретвител
+                user[LIST_OF_MENTIONS_KEY] = []  # лист кого упоминал
+                user[LIST_OF_LIKES_KEY] = favorite_users  # лист кого он лайкал
+                user[LIST_OF_FOLLOWING_KEY] = twitter_search.get_friends_of(screen_name=screen_name)  # кого он фолловит
+                user[DESCRIPTION_KEY] = user_req.description  # описание
+                user[LIST_OF_HASHTAGS_KEY] = []  # хештег лист
+                user[LIST_OF_CATEGORIES_KEY] = []  # лист категорий
+
+            all_posts_with_user[USER_KEY] = user
+
+            all_users.append(all_posts_with_user)
+
+        json_post = json.dumps(all_users)
+
+        with open(file_name, 'w+') as file:
+            file.write(json_post)
+
+    def read_users(self, file_name: str) -> List[str]:
+        """
+        Reads user names to analyze
+        :param file_name: file with user names
+        :return:
+        """
+        result_users = []
+        with open(file_name) as file:
+            for line in file:
+                result_users.append(line)
+        return result_users
+
+    def _get_interaction_vector(self, user_1, user_2)-> Dict:
+        """
+        Computes interaction vector
+        :param user_1:
+        :param user_2:
+        :return:
+        """
+        user_1 = user_1[USER_KEY]
+        user_2_screen_name = user_2[USER_KEY][SCREEN_NAME_KEY]
+        interaction_vector = {}
+        interaction_vector[COMMENTS_INTERACTION] = user_1[LIST_OF_COMMENTS_KEY].count(user_2_screen_name)
+        interaction_vector[RETWEETS_INTERACTION] = user_1[LIST_OF_RETWEETS_KEY].count(user_2_screen_name)
+        interaction_vector[MENTIONS_INTERACTION] = user_1[LIST_OF_MENTIONS_KEY].count(user_2_screen_name)
+        interaction_vector[FOLLOWING_INTERACTION] = user_1[LIST_OF_FOLLOWING_KEY].count(user_2_screen_name)
+        interaction_vector[LIKES_INTERACTION] = user_1[LIST_OF_LIKES_KEY].count(user_2_screen_name)
+        return interaction_vector
+
+    def _get_auxilirary_vector(self, user):
+        """
+
+        :param user: user for whom to return dictionary
+        :return: {COMMENTS: int, RETWEETS: int, MENTIONS:int, LIKES:int, FOLLOWINGS:int}
+
+        """
+        auxil = {}
+        user = user[USER_KEY]
+        # comments  [in timestamp]
+        auxil['COMMENTS'] = len(user[LIST_OF_COMMENTS_KEY])
+        # retweets [in timestamp]
+        auxil['RETWEETS'] = len(user[LIST_OF_RETWEETS_KEY])
+        # mentions [in timestamp]
+        auxil['MENTIONS'] = len(user[LIST_OF_MENTIONS_KEY])
+        # likes [in timestamp]
+        auxil['LIKES'] = len(user[LIST_OF_LIKES_KEY])
+        # following [all]
+        auxil['FOLLOWINGS'] = len(user[LIST_OF_FOLLOWING_KEY])
+
+        return auxil
+
+    def get_pair_user_vectors(self, users: List[Dict])-> Dict[str, Any]:
+        """
+        calculates interactions, similarity and auxiliary variables for pair of users
+        to calculate relationship strength
+        :param users:
+        :return:
+        """
+        all_user_pairs = {}
+        for i, user_1 in enumerate(users):
+            user_screen_name = user_1[USER_KEY][SCREEN_NAME_KEY]
+            user_screen_name = user_screen_name.replace('\n', '')
+            user_pairs = {} # consists of user + vector of interaction and similarity
+            user_auxiliary_vars = self._get_auxilirary_vector(user_1)
+            for j, user_2 in enumerate(users):
+                if i != j:
+                    interaction_vector = self._get_interaction_vector(user_1=user_1, user_2=user_2)
+                    similarity_vector = self.get_user_simlarity_vector(user_1, user_2)
+                    user_2_screen_name = user_2[USER_KEY][SCREEN_NAME_KEY]
+                    user_2_screen_name = user_2_screen_name.replace('\n', '')
+                    user_pairs[user_2_screen_name] = {INTERACTION_VECTOR_KEY: interaction_vector,
+                                                      SIMILARITY_VECTOR_KEY: similarity_vector}
+            user_info = {'auxiliary_vector': user_auxiliary_vars, 'users': user_pairs}
+            all_user_pairs[user_screen_name] = user_info
+
+        return all_user_pairs
+
+    def get_user_simlarity_vector(self, user_1: Dict, user_2: Dict) -> Dict:
+        """
+        computes similarity vector for pair of users
+        :param user_1:
+        :param user_2:
+        :return: dictionary with all similarity parameters
         """
         similarity = {}
+        user_1 = user_1[USER_KEY]
+        user_2 = user_2[USER_KEY]
+        user_1_following = set(user_1[LIST_OF_FOLLOWING_KEY])
+        user_2_following = set(user_2[LIST_OF_FOLLOWING_KEY])
 
-        similarity[DESCRIPTION_SIMILARITY] = self._calculate_description_similarity(
-            user1.get('description'),user2.get('description'))
-        similarity[FOLLOWING_SIMILARITY] = 0
-        similarity[DATE_OF_CREATION_SIMILARITY] = 0
-        similarity[HASHTAGS_SIMILARITY] = 0
-        similarity[CATEGORIES_SIMILARITY] = 0
+        common_followings = list(user_1_following.intersection(user_2_following))
+        following_sim = 1.0 * len(common_followings) / len(user_1_following)
+        description_1 = user_1[DESCRIPTION_KEY]
+        description_2 = user_2[DESCRIPTION_KEY]
+        description_simlarity = self._calculate_description_similarity(description_1, description_2)
+
+        hashtags_1 = set(user_1[LIST_OF_HASHTAGS_KEY])
+        hashtags_2 = set(user_2[LIST_OF_HASHTAGS_KEY])
+        common_hashtags = list(hashtags_1.intersection(hashtags_2))
+        hashtags_similarity = len(common_hashtags)/len(hashtags_1)
+        categories_1 = user_1[LIST_OF_CATEGORIES_KEY]
+        categories_2 = user_2[LIST_OF_CATEGORIES_KEY]
+        categories_similarity = twitterSearch.get_categories_similarity(categories_1, categories_2)
+
+        similarity[FOLLOWING_SIMILARITY] = following_sim
+        similarity[DESCRIPTION_SIMILARITY] = description_simlarity
+        similarity[HASHTAGS_SIMILARITY] = hashtags_similarity
+        similarity[CATEGORIES_SIMILARITY] = categories_similarity
 
         return similarity
 
 
-    def _calculate_description_similarity(self, description1, description2)->float:
+    def _calculate_description_similarity(self, description1, description2) -> float:
         """
         Computes cosine similarity of two descriptions of two users
         :param description1: descruption of user 1
         :param description2: description of user 2
         :return: number in range [0,1] that characterizes how users descriptions are similar
         """
+
         def get_vectors(*strs):
             text = [t for t in strs]
             vectorizer = CountVectorizer(text)
@@ -496,14 +670,44 @@ class TwitterApi():
         similarity = cosine_similarity(vectors)[0, 1]
         return similarity
 
+    def read_users_info(self, file_name: str)-> List:
+        """
+        reads information about all user,
+        i.e. user account info and posts hashtags and categories
+        :param file_name: file with users info
+        :return: dictionary with all data
+        """
+        file_content = ''
+        with open(file_name) as f:
+            file_content = f.read()
+
+        users_info = json.loads(file_content)
+        return users_info
+
+    def get_user_pairs_info_from_file(self, file_name: str) -> Dict:
+        """
+        computes all nessesary vectors for user pairs analysis and saves to file
+        :param file_name: name of file
+        :return:
+        """
+        users_data = self.read_users_info(file_name)
+        users_pair_info = self.get_pair_user_vectors(users_data)
+
+        return users_pair_info
 
 
 
 if __name__ == '__main__':
     twitterSearch = TwitterApi()
-    posts = twitterSearch.find_posts_twitter(api=twitterSearch.get_api_instance(), screen_name='', pool_amount=50,
-                                             since=None)
-    # pprint(posts)
-    interactions = twitterSearch.find_user_interactions_in_posts(posts, '')
-    pprint(interactions)
+    dataset = DatasetCollection()
+    posts = []
+    file_name = "user_data.json"
+    dataset.save_posts_of_user(twitter_search=twitterSearch,
+                               screen_names=dataset.read_users('accounts.txt'),
+                               file_name=file_name)
+    users_pair_info = dataset.get_user_pairs_info_from_file(file_name)
+    data_to_save = json.dumps(users_pair_info)
+
+    with open('pairs_data.txt', 'w+') as f:
+        f.write(data_to_save)
 

@@ -24,12 +24,12 @@ While not converged:
 
 Note: relationships between users are not bidirectional, i.e. z(i,j)!=z(j,i)
 """
-
-from typing import Tuple, Callable
-from scipy.optimize import newton
+import sys
+from typing import Tuple
 import numpy as np
 
 from math import exp
+import json
 
 VARIANCE = 0.5
 LAMBDA_W = 0.5
@@ -45,21 +45,56 @@ THETA_MATRIX_SIZE = (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VARIABLES + 1) 
 Y_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 A_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 b = 0.1
+
+
 # TODO add initialization, parameters sizes and methods for updating weights
 
-def perform_newton_rapson_step(theta: np.array, z: np.array, w: np.array) -> Tuple[np.array, np.array, np.array]:
+def learning_algorithm(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
+                       a: np.array) -> Tuple[np.array, np.array, np.array]:
+    new_theta = theta
+    new_z = z
+    new_w = w
+    error = 0.1  # TODO decide error
+    dw = 1
+    while dw > error:
+        dtheta, new_theta = update_theta(new_z, y, new_theta, a)
+        while dtheta > error:
+            dtheta, new_theta = update_theta(new_z, y, new_theta, a)
 
-    new_theta = 0
-    new_z = 0
-    new_w = 0
+        dz, new_theta = update_z(variance, new_w, s, new_z, y, new_theta, a)
+        while dz > error:
+            dz, new_z = update_z(variance, new_w, s, new_z, y, new_theta, a)
+
+        new_w = update_w(s, new_z, new_w)
 
 
-def update_theta(theta: np.array, z: np.array, w: np.array) -> np.array:
-    k = 9
+def update_theta(z: np.array, y: np.array, theta: np.array,
+                 a: np.array) -> np.array:
+    dtheta = np.zeros(shape=THETA_MATRIX_SIZE)
+    for t in range(NUMBER_OF_INTERACTIONS):
+        first_gradient = theta_first_gradient(z, y, theta, a)
+        second_gradient = theta_second_gradient(z, y, theta, a)
+        denom_t = np.linalg.inv(second_gradient[t])
+        dtheta_t = -first_gradient[t].dot(denom_t)
+        dtheta[t] = dtheta_t
+    new_theta = np.add(theta, dtheta)
+    dtheta = dtheta ** 2
+    dtheta = dtheta.sum()
+
+    return dtheta, new_theta
 
 
-def update_z(theta: np.array, z: np.array, w: np.array) -> np.array:
-    k = 4
+def update_z(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
+             a: np.array) -> np.array:
+    denom = z_second_gradient(variance, theta, a, z) ** -1
+    dz = - z_first_gradient(variance, w, s, y, theta).dot(denom)
+
+    new_z = np.add(z, dz)
+    dz = dz ** 2
+    dz = dz.sum()
+
+    return dz, new_z
+
 
 def update_w(S: np.array, z: np.array, w: np.array) -> np.array:
     """
@@ -79,52 +114,72 @@ def update_w(S: np.array, z: np.array, w: np.array) -> np.array:
     return w
 
 
-def initialize_normal_distribution(mean: int, variance: int) -> np.array:
-    j= 0
-
-
-def newton_raphson_step(p0: np.array, funct: Callable, fder: Callable, fder2: Callable, *args) -> np.array:
-    """
-    Above commented code spizhen from scipy.optimize newton method
-    :param p0:
-    :param funct:
-    :param fder:
-    :param fder2:
-    :param args:
-    :return:
-    """
-    # Multiply by 1.0 to convert to floating point.  We don't use float(x0)
-    # so it still works if x0 is complex.
-    # p0 = 1.0 * x0
-    # if fprime is not None:
-    #     # Newton-Rapheson method
-    #     for iter in range(maxiter):
-    #         fder = fprime(p0, *args)
-    #         if fder == 0:
-    #             msg = "derivative was zero."
-    #             warnings.warn(msg, RuntimeWarning)
-    #             return p0
-    #         fval = func(p0, *args)
-    #         newton_step = fval / fder
-    #         if fprime2 is None:
-    #             # Newton step
-    #             p = p0 - newton_step
-    #         else:
-    #             fder2 = fprime2(p0, *args)
-    #             # Halley's method
-    #             p = p0 - newton_step / (1.0 - 0.5 * newton_step * fder2 / fder)
-    #         if abs(p - p0) < tol:
-    #             return p
-    #         p0 = p
-
-
 def initialize_parameter(size: Tuple, mu: float, sigma: float) -> np.array:
     """
     Initialize with normal distribution
     :param size:
     :return:
     """
+
     return np.random.normal(mu, sigma, size=size)
+
+
+def theta_first_gradient(z: np.array, y: np.array, theta: np.array,
+                         a: np.array) -> np.array:
+    """
+    Equation (7)
+    :param z: relationship matrix  shape: (NUMBER_OF_PAIRS, 1)
+    :param y: matrix of interactions, (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
+    :param theta: matrix of interaction weights (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VERIABLES + 1)
+    :param a: matrix of auxiliary values for interactions
+    :return: 2d array, where t-th element gradient for theta_t
+    """
+    gradients = np.zeros(shape=THETA_MATRIX_SIZE)
+    for t in range(NUMBER_OF_INTERACTIONS):
+        theta_t = theta[t]  # shape = (NUMBER_OF_AUXILIARY_VARIABLES+1,)
+        sum = np.zeros(shape=(NUMBER_OF_AUXILIARY_VARIABLES + 1,))
+        for pair in range(NUMBER_OF_PAIRS):
+            z_pair = z[pair]
+            a_t = a[pair, t]
+            u_t = np.concatenate(([a_t], z_pair))
+            term = y[pair, t] - 1.0 / (1.0 - _get_exponent(pair, t, theta, z, a))
+            sum = np.add(sum, u_t.dot(term))
+        term2 = theta_t.dot(LAMBDA_THETA)
+        gradients[t] = np.add(sum, term2)
+    return gradients
+
+
+def theta_second_gradient(z: np.array, y: np.array, theta: np.array,
+                          a: np.array) -> np.array:
+    """
+    Equation (10)
+    :param z: relationship matrix  shape: (NUMBER_OF_PAIRS, 1)
+    :param y: matrix of interactions, (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
+    :param theta: matrix of interaction weights (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VERIABLES + 1)
+    :param a: matrix of auxiliary values for interactions
+    :return: 3d array, where t-th element second gradient(square matrix) for thetha_t
+    """
+    gradients = np.zeros(
+        shape=(NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VARIABLES + 1, NUMBER_OF_AUXILIARY_VARIABLES + 1))
+    identity = np.identity(NUMBER_OF_AUXILIARY_VARIABLES + 1)
+    for t in range(NUMBER_OF_INTERACTIONS):
+        theta_t = theta[t]  # shape = (NUMBER_OF_AUXILIARY_VARIABLES+1,)
+        sum = np.zeros(shape=(NUMBER_OF_AUXILIARY_VARIABLES + 1, NUMBER_OF_AUXILIARY_VARIABLES + 1))
+        for pair in range(NUMBER_OF_PAIRS):
+            z_pair = z[pair]
+            a_t = a[pair, t]
+            u_t = np.concatenate(([a_t], z_pair))
+            exp = _get_exponent(pair, t, theta, z, a)
+            try:
+                term1 = y[pair, t] - exp / (1.0 - exp) ** 2
+            except Exception:
+                term1 = sys.maxsize
+            term2 = u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).dot(
+                u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).transpose())
+            sum = np.add(sum, term2.dot(term1))
+        term = identity.dot(LAMBDA_THETA)
+        gradients[t] = np.add(-sum, term)
+    return gradients
 
 
 def z_first_gradient(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
@@ -177,7 +232,7 @@ def z_second_gradient(variance: int, theta: np.array, a: np.array, z: np.array) 
         sum_of_interactions = 0
         for t in range(NUMBER_OF_INTERACTIONS):
             theta_t = theta[t]  # shape: (1, 2)
-            theta_parameter_for_z = theta_t[0, NUMBER_OF_AUXILIARY_VARIABLES]  # number
+            theta_parameter_for_z = theta_t[NUMBER_OF_AUXILIARY_VARIABLES]  # number
             exponent = _get_exponent(i, t, theta, z, a)
             intermediate_result = (theta_parameter_for_z ** 2) * exponent / ((1 + exponent) ** 2)
             sum_of_interactions += intermediate_result
@@ -201,16 +256,69 @@ def _get_exponent(pair_index: int, interaction_index: int, theta: np.array, z: n
     """
     z_i = z[pair_index]
     a_t = a[pair_index, interaction_index]
-    u_t = np.concatenate((a_t, z_i))
-    exponent_power = - 1.0 * (theta.dot(u_t) + b)[0, 0]  # number; without [0,0] shape: (1,1)
-    return exp(exponent_power)
+    u_t = np.concatenate(([a_t], z_i))
+    exponent_power = - 1.0 * (theta[interaction_index].dot(u_t) + b)  # number; without [0,0] shape: (1,1)
+    try:
+        return exp(exponent_power)
+    except Exception:
+        return sys.maxsize
+        print(exponent_power)
 
 
-# TODO Remove
-n = 4 # number of similarity measures
-number_of_pairs = 100
-S = initialize_parameter(SIMILARITY_MATRIX_SIZE, 0.5, 0.5)
+def load_data(file):
+    """
+    Load data from file
+    :param file: file to read from
+    :return: A_MATRIX shape = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS),
+             SIMILARITY_MATRIX shape = (NUMBER_OF_PAIRS, NUMBER_OF_SIMILARITIES),
+             Y_MATRIX shape = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS),
+             list of pairs: (screen_name1, screen_name2)
+    """
+    similarity_matrix = []
+    a_matrix = []
+    y_matrix = []
+    pairs = []
+    with open(file) as f:
+        data = json.load(f)
+        users = data.keys()
+        for user in users:
+            auxilirary_values = _order_dictionary(data[user]['auxiliary_vector'])
+            subusers = data[user]['users']
+            for subuser in subusers:
+                pairs.append((user, subuser))
+                a_matrix.append(auxilirary_values)
+                print(list(subusers[subuser]['similarity_vector'].values()))
+                similarity_matrix.append(list(subusers[subuser]['similarity_vector'].values()))
+                y_matrix.append(_order_dictionary(subusers[subuser]['interaction_vector']))
+    return a_matrix, y_matrix, similarity_matrix, pairs
 
-w = initialize_parameter(W_MATRIX_SIZE, 0.5, 0.5)
 
-z = initialize_parameter(Z_MATRIX_SIZE, 0.5, 0.5)
+def _order_dictionary(dict):
+    """
+    Orders given dictionary by keys
+    Puts result into a new list
+    :param dict:
+    :return: new list
+    """
+    ordering = ['comment', 'retweet', 'mention', 'like', 'follow']
+    ordered = []
+    while len(ordered) != len(ordering):
+        for key in dict:
+            if len(ordered) == len(ordering):
+                break
+            if ordering[len(ordered)] in key.lower():
+                ordered.append(dict[key])
+    return ordered
+
+
+a_matrix, y_matrix, similarity_matrix, pairs = load_data(
+    file='pairs_data.txt')
+mu, sigma = 0.5, 0.5
+a_matrix = np.array(a_matrix)
+y_matrix = np.array(y_matrix)
+similarity_matrix = np.array(similarity_matrix)
+weight = np.ones(shape=W_MATRIX_SIZE)
+z = np.random.normal(mu, sigma, Z_MATRIX_SIZE)
+theta = np.random.normal(mu, sigma, THETA_MATRIX_SIZE)
+learning_algorithm(sigma, weight, similarity_matrix, z, y_matrix, theta, a_matrix)
+print("qwerty")
