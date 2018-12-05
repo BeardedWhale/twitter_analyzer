@@ -35,7 +35,7 @@ from scipy.special._ufuncs import expit
 from scipy.stats import logistic
 
 VARIANCE = 0.5
-LAMBDA_W = 0.5
+LAMBDA_W = 2
 LAMBDA_THETA = 0.5
 NUMBER_OF_SIMILARITIES = 4
 NUMBER_OF_INTERACTIONS = 5
@@ -49,50 +49,57 @@ Y_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 A_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 b = 0.1
 ALPHA = 0.001
+ITER_NUM = 3
 
 
 # TODO add initialization, parameters sizes and methods for updating weights
 
 def learning_algorithm(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
                        a: np.array) -> Tuple[np.array, np.array, np.array]:
+    global ALPHA
     new_theta = theta
     new_z = z
     i = 0
     new_w = w
     error = 3000  # TODO decide error
     dw = sys.maxsize
-    while dw > error or i < 20:
-        print(f'iteration {i}')
-        print("------------")
+    while i < 10:
+        print(f'------------iteration {i}------------')
         dtheta, new_theta = update_theta(new_z, y, new_theta, a)
         print("--Update theta--")
-        print(f'dtheta ={dtheta} error ={error}')
-        while dtheta > error:
+        print(f'dtheta={dtheta} i={i} alpha={ALPHA}')
+        j = 0
+        while j < ITER_NUM:
             dtheta, new_theta = update_theta(new_z, y, new_theta, a)
             print("--Update theta in while loop--")
-            print(f'dtheta ={dtheta} error ={error}')
+            print(f'dtheta={dtheta} j={j}')
             print(f'theta shape={new_theta.shape}')
+            j += 1
 
         print("------------")
         dz, new_z = update_z(variance, new_w, s, new_z, y, new_theta, a)
         print("--Update z--")
-        print(f'dz ={dz} error ={error}')
-        while dz > error:
+        print(f'dz ={dz} i={i} alpha={ALPHA}')
+        j = 0
+        while j < ITER_NUM:
             dz, new_z = update_z(variance, new_w, s, new_z, y, new_theta, a)
             print("--Update z in while loop--")
-            print(f'dz ={dz} error ={error}')
+            print(f'dz={dz} j={j}')
             print(f'z shape={new_z.shape}')
+            j += 1
 
         print("------------")
         print("--Update w--")
-        print(f'dw ={dw} error ={error}')
+        print(f'dw={dw} i={i} alpha={ALPHA}')
         new_w = update_w(s, new_z)
         dw = np.abs(np.sum(np.add(w ** 2, -new_w ** 2)))
         w = new_w
         print("--Update w--")
-        print(f'dw ={dw} error ={error}')
+        print(f'dw={dw} i={i} alpha={ALPHA}')
         i += 1
-        error /= i
+        ALPHA /= 2
+        print("------------")
+
     return new_z, new_w, new_theta
 
 
@@ -175,7 +182,7 @@ def theta_first_gradient(z: np.array, y: np.array, theta: np.array,
             term = y[pair, t] - _get_sigmoid(pair, t, theta, z, a)
             sum = np.add(sum, u_t * term[0])
         term2 = theta_t.dot(LAMBDA_THETA)
-        gradients[t] = np.add(sum, term2)
+        gradients[t] = np.add(sum, -term2)
         # print(f'{t/NUMBER_OF_INTERACTIONS*100}%')
     return gradients
 
@@ -209,7 +216,7 @@ def theta_second_gradient(z: np.array, y: np.array, theta: np.array,
                 u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).transpose())
             sum = np.add(sum, term2 * term1[0])
         term = identity.dot(LAMBDA_THETA)
-        gradients[t] = np.add(-sum, term)
+        gradients[t] = np.add(-sum, -term)
         # print(f'{t/NUMBER_OF_INTERACTIONS*100}%')
     return gradients
 
@@ -368,6 +375,9 @@ weight = np.ones(shape=W_MATRIX_SIZE)
 z = np.random.normal(mu, sigma, Z_MATRIX_SIZE)
 theta = np.random.normal(mu, sigma, THETA_MATRIX_SIZE)
 new_z, new_w, new_theta = learning_algorithm(sigma, weight, similarity_matrix, z, y_matrix, theta, a_norm)
+np.save("z", new_z)
+np.save("w", new_w)
+np.save("theta", new_theta)
 print("DONE")
 print("---------")
 print(new_z)
