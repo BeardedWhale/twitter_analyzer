@@ -24,19 +24,22 @@ While not converged:
 
 Note: relationships between users are not bidirectional, i.e. z(i,j)!=z(j,i)
 """
+import scipy
 import sys
 from typing import Tuple
 import numpy as np
 
-from math import exp
 import json
+
+from scipy.special._ufuncs import expit
+from scipy.stats import logistic
 
 VARIANCE = 0.5
 LAMBDA_W = 0.5
 LAMBDA_THETA = 0.5
 NUMBER_OF_SIMILARITIES = 4
 NUMBER_OF_INTERACTIONS = 5
-NUMBER_OF_PAIRS = 100
+NUMBER_OF_PAIRS = 1563
 NUMBER_OF_AUXILIARY_VARIABLES = 1
 SIMILARITY_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_SIMILARITIES)
 Z_MATRIX_SIZE = (NUMBER_OF_PAIRS, 1)
@@ -45,6 +48,7 @@ THETA_MATRIX_SIZE = (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VARIABLES + 1) 
 Y_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 A_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 b = 0.1
+ALPHA = 0.001
 
 
 # TODO add initialization, parameters sizes and methods for updating weights
@@ -53,19 +57,43 @@ def learning_algorithm(variance: int, w: np.array, s: np.array, z: np.array, y: 
                        a: np.array) -> Tuple[np.array, np.array, np.array]:
     new_theta = theta
     new_z = z
+    i = 0
     new_w = w
-    error = 0.1  # TODO decide error
-    dw = 1
-    while dw > error:
+    error = 3000  # TODO decide error
+    dw = sys.maxsize
+    while dw > error or i < 20:
+        print(f'iteration {i}')
+        print("------------")
         dtheta, new_theta = update_theta(new_z, y, new_theta, a)
+        print("--Update theta--")
+        print(f'dtheta ={dtheta} error ={error}')
         while dtheta > error:
             dtheta, new_theta = update_theta(new_z, y, new_theta, a)
+            print("--Update theta in while loop--")
+            print(f'dtheta ={dtheta} error ={error}')
+            print(f'theta shape={new_theta.shape}')
 
-        dz, new_theta = update_z(variance, new_w, s, new_z, y, new_theta, a)
+        print("------------")
+        dz, new_z = update_z(variance, new_w, s, new_z, y, new_theta, a)
+        print("--Update z--")
+        print(f'dz ={dz} error ={error}')
         while dz > error:
             dz, new_z = update_z(variance, new_w, s, new_z, y, new_theta, a)
+            print("--Update z in while loop--")
+            print(f'dz ={dz} error ={error}')
+            print(f'z shape={new_z.shape}')
 
-        new_w = update_w(s, new_z, new_w)
+        print("------------")
+        print("--Update w--")
+        print(f'dw ={dw} error ={error}')
+        new_w = update_w(s, new_z)
+        dw = np.abs(np.sum(np.add(w ** 2, -new_w ** 2)))
+        w = new_w
+        print("--Update w--")
+        print(f'dw ={dw} error ={error}')
+        i += 1
+        error /= i
+    return new_z, new_w, new_theta
 
 
 def update_theta(z: np.array, y: np.array, theta: np.array,
@@ -75,19 +103,21 @@ def update_theta(z: np.array, y: np.array, theta: np.array,
         first_gradient = theta_first_gradient(z, y, theta, a)
         second_gradient = theta_second_gradient(z, y, theta, a)
         denom_t = np.linalg.inv(second_gradient[t])
-        dtheta_t = -first_gradient[t].dot(denom_t)
+        dtheta_t = - ALPHA * first_gradient[t].dot(denom_t)  # TODO
         dtheta[t] = dtheta_t
     new_theta = np.add(theta, dtheta)
     dtheta = dtheta ** 2
     dtheta = dtheta.sum()
-
     return dtheta, new_theta
 
 
 def update_z(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
              a: np.array) -> np.array:
+    if theta.shape != (5, 2):
+        kek = 30
     denom = z_second_gradient(variance, theta, a, z) ** -1
-    dz = - z_first_gradient(variance, w, s, y, theta).dot(denom)
+    first_gradient = z_first_gradient(variance, w, s, z, y, theta, a).transpose()
+    dz = - ALPHA * first_gradient.dot(denom)  # TODO
 
     new_z = np.add(z, dz)
     dz = dz ** 2
@@ -96,7 +126,7 @@ def update_z(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, 
     return dz, new_z
 
 
-def update_w(S: np.array, z: np.array, w: np.array) -> np.array:
+def update_w(S: np.array, z: np.array) -> np.array:
     """
 
     :param S: similarity matrix, size: (NUMBER_OF_PAIRS, NUMBER_OF_SIMILARITIES)
@@ -142,10 +172,11 @@ def theta_first_gradient(z: np.array, y: np.array, theta: np.array,
             z_pair = z[pair]
             a_t = a[pair, t]
             u_t = np.concatenate(([a_t], z_pair))
-            term = y[pair, t] - 1.0 / (1.0 - _get_exponent(pair, t, theta, z, a))
-            sum = np.add(sum, u_t.dot(term))
+            term = y[pair, t] - _get_sigmoid(pair, t, theta, z, a)
+            sum = np.add(sum, u_t * term[0])
         term2 = theta_t.dot(LAMBDA_THETA)
         gradients[t] = np.add(sum, term2)
+        # print(f'{t/NUMBER_OF_INTERACTIONS*100}%')
     return gradients
 
 
@@ -169,16 +200,17 @@ def theta_second_gradient(z: np.array, y: np.array, theta: np.array,
             z_pair = z[pair]
             a_t = a[pair, t]
             u_t = np.concatenate(([a_t], z_pair))
-            exp = _get_exponent(pair, t, theta, z, a)
             try:
-                term1 = y[pair, t] - exp / (1.0 - exp) ** 2
+                logistic = _get_logistic(pair_index=pair, interaction_index=t, theta=theta, z=z, a=a)
+                term1 = y[pair, t] - logistic
             except Exception:
                 term1 = sys.maxsize
             term2 = u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).dot(
                 u_t.reshape(NUMBER_OF_AUXILIARY_VARIABLES + 1, 1).transpose())
-            sum = np.add(sum, term2.dot(term1))
+            sum = np.add(sum, term2 * term1[0])
         term = identity.dot(LAMBDA_THETA)
         gradients[t] = np.add(-sum, term)
+        # print(f'{t/NUMBER_OF_INTERACTIONS*100}%')
     return gradients
 
 
@@ -195,7 +227,6 @@ def z_first_gradient(variance: int, w: np.array, s: np.array, z: np.array, y: np
     :param theta: matrix of interaction weights (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VERIABLES + 1)
     :return: gradient values
     """
-
     gradient1_values = []
     for i, z_ith in enumerate(z[:, 0]):  # z_ith shape: (1, 1)
         z_gradient1 = (1.0 / variance) * (w.transpose().dot(s[i])) - z_ith  # current shape: (1, 1)
@@ -204,13 +235,13 @@ def z_first_gradient(variance: int, w: np.array, s: np.array, z: np.array, y: np
         for t in range(NUMBER_OF_INTERACTIONS):
             y_t = y[i, t]  # number
             theta_t = theta[t]  # shape: (1, 2)
-            theta_parameter_for_z = theta_t[0, NUMBER_OF_AUXILIARY_VARIABLES]  # number
-            exponent = _get_exponent(i, t, theta, z, a)
-            intermediate_result = (y_t - 1.0 / (1.0 + exponent)) * theta_parameter_for_z
+            theta_parameter_for_z = theta_t[NUMBER_OF_AUXILIARY_VARIABLES]  # number
+            intermediate_result = (y_t - _get_sigmoid(i, t, theta, z, a)) * theta_parameter_for_z
             sum_of_interactions += intermediate_result
 
-        z_gradient1 = z_gradient1[0, 0] + sum_of_interactions
+        z_gradient1 = z_gradient1[0] + sum_of_interactions
         gradient1_values.append(z_gradient1)
+        # print(f'{i/NUMBER_OF_INTERACTIONS*100}%')
     gradient1 = np.array(gradient1_values)
     gradient1 = gradient1.reshape(Z_MATRIX_SIZE)
     return gradient1
@@ -233,36 +264,41 @@ def z_second_gradient(variance: int, theta: np.array, a: np.array, z: np.array) 
         for t in range(NUMBER_OF_INTERACTIONS):
             theta_t = theta[t]  # shape: (1, 2)
             theta_parameter_for_z = theta_t[NUMBER_OF_AUXILIARY_VARIABLES]  # number
-            exponent = _get_exponent(i, t, theta, z, a)
-            intermediate_result = (theta_parameter_for_z ** 2) * exponent / ((1 + exponent) ** 2)
+            logistic = _get_logistic(pair_index=i, interaction_index=t, theta=theta, z=z, a=a)
+            intermediate_result = (theta_parameter_for_z ** 2) * logistic
             sum_of_interactions += intermediate_result
         z_gradient2 -= sum_of_interactions
         gradient2_values.append(z_gradient2)
+        # print(f'{i/NUMBER_OF_INTERACTIONS*100}%')
     gradient2 = np.array(gradient2_values)
     gradient2 = gradient2.reshape(Z_MATRIX_SIZE)
 
     return gradient2
 
 
-def _get_exponent(pair_index: int, interaction_index: int, theta: np.array, z: np.array, a: np.array) -> float:
-    """
-    computes special exponent value that was defined in Eq. (3) and used further in all gradients
-    :param pair_index: index of user pair
-    :param interaction_index: index of certain interaction
-    :param theta: matrix of interaction weights (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VERIABLES + 1)
-    :param z: relationship matrix  shape: (NUMBER_OF_PAIRS, 1)
-    :param a: matrix of auxiliary values for interactions
-    :return: value of exponent
-    """
+def _get_sigmoid(pair_index: int, interaction_index: int, theta: np.array, z: np.array, a: np.array) -> float:
     z_i = z[pair_index]
     a_t = a[pair_index, interaction_index]
     u_t = np.concatenate(([a_t], z_i))
-    exponent_power = - 1.0 * (theta[interaction_index].dot(u_t) + b)  # number; without [0,0] shape: (1,1)
+    th = theta[interaction_index]
+    th = th.reshape((2, 1))
+    # th = th.transpose()
+    exponent_power = (u_t.dot(th) + b)
+    return expit(exponent_power)
+
+
+def _get_logistic(pair_index: int, interaction_index: int, theta: np.array, z: np.array, a: np.array) -> float:
+    z_i = z[pair_index]
+    a_t = a[pair_index, interaction_index]
+    u_t = np.concatenate(([a_t], z_i))
+    th = theta[interaction_index]
+    th = th.reshape((2, 1))
+    exponent_power = - 1.0 * (u_t.dot(th) + b)  # number; without [0,0] shape: (1,1)
     try:
-        return exp(exponent_power)
+        log = logistic().pdf(exponent_power)
+        return log
     except Exception:
-        return sys.maxsize
-        print(exponent_power)
+        return -1
 
 
 def load_data(file):
@@ -287,7 +323,6 @@ def load_data(file):
             for subuser in subusers:
                 pairs.append((user, subuser))
                 a_matrix.append(auxilirary_values)
-                print(list(subusers[subuser]['similarity_vector'].values()))
                 similarity_matrix.append(list(subusers[subuser]['similarity_vector'].values()))
                 y_matrix.append(_order_dictionary(subusers[subuser]['interaction_vector']))
     return a_matrix, y_matrix, similarity_matrix, pairs
@@ -311,14 +346,32 @@ def _order_dictionary(dict):
     return ordered
 
 
+def _normalize__by_columns(matrix: np.array):
+    result = []
+    for i in matrix.transpose():
+        if np.sum(i) != 0:
+            result.append(i.dot(1 / np.sum(i)))
+        else:
+            result.append(i)
+
+    return np.array(result).transpose()
+
+
 a_matrix, y_matrix, similarity_matrix, pairs = load_data(
     file='pairs_data.txt')
 mu, sigma = 0.5, 0.5
 a_matrix = np.array(a_matrix)
+a_norm = _normalize__by_columns(a_matrix)
 y_matrix = np.array(y_matrix)
 similarity_matrix = np.array(similarity_matrix)
 weight = np.ones(shape=W_MATRIX_SIZE)
 z = np.random.normal(mu, sigma, Z_MATRIX_SIZE)
 theta = np.random.normal(mu, sigma, THETA_MATRIX_SIZE)
-learning_algorithm(sigma, weight, similarity_matrix, z, y_matrix, theta, a_matrix)
-print("qwerty")
+new_z, new_w, new_theta = learning_algorithm(sigma, weight, similarity_matrix, z, y_matrix, theta, a_norm)
+print("DONE")
+print("---------")
+print(new_z)
+print("---------")
+print(new_w)
+print("---------")
+print(new_theta)
