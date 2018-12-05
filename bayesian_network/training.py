@@ -24,6 +24,8 @@ While not converged:
 
 Note: relationships between users are not bidirectional, i.e. z(i,j)!=z(j,i)
 """
+import math
+
 import scipy
 import sys
 from typing import Tuple
@@ -48,13 +50,14 @@ THETA_MATRIX_SIZE = (NUMBER_OF_INTERACTIONS, NUMBER_OF_AUXILIARY_VARIABLES + 1) 
 Y_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 A_MATRIX_SIZE = (NUMBER_OF_PAIRS, NUMBER_OF_INTERACTIONS)
 b = 0.1
-ALPHA = 0.001
+ALPHA = 0.1
 
 
 # TODO add initialization, parameters sizes and methods for updating weights
 
 def learning_algorithm(variance: int, w: np.array, s: np.array, z: np.array, y: np.array, theta: np.array,
                        a: np.array) -> Tuple[np.array, np.array, np.array]:
+    global ALPHA
     new_theta = theta
     new_z = z
     i = 0
@@ -92,6 +95,7 @@ def learning_algorithm(variance: int, w: np.array, s: np.array, z: np.array, y: 
         print("--Update w--")
         print(f'dw ={dw} error ={error}')
         i += 1
+        ALPHA /=10
         error /= i
     return new_z, new_w, new_theta
 
@@ -346,6 +350,37 @@ def _order_dictionary(dict):
     return ordered
 
 
+def calculate_log_likelihood(s, w, theta, z, y, a)->int:
+    log_likelihood = 0
+    pair_sum = 0
+    for pair in range(NUMBER_OF_PAIRS):
+        w_transposed = w.transpose()
+        pair_sim = s[pair]
+        ws_prod = w_transposed.dot(pair_sim)
+        z_pair = z[pair]
+        z_likelihood = ((ws_prod[0]*z_pair)**2)/2*VARIANCE
+        pair_sum += z_likelihood
+        interaction_sum = 0
+        for t in range(NUMBER_OF_INTERACTIONS):
+            pair_interaction = y[pair][t]
+            sub_diff = 1 - pair_interaction
+            theta_t_transpose = theta[t].transpose()
+            a_t = a[pair][t]
+            u_t = np.concatenate(([a_t], z_pair))
+            theta_u_prod = theta_t_transpose.dot(u_t) + b
+            log_sigmoid = _get_sigmoid(pair, a=a, interaction_index=t, theta=theta, z=z)
+            interaction_val = -1 * sub_diff*theta_u_prod + math.log(log_sigmoid)
+            interaction_sum += interaction_val
+        pair_sum+=interaction_sum
+    weight_val = -0.5 * LAMBDA_W * (w.transpose().dot(w)[0])
+    theta_val = 0
+    for t in range(NUMBER_OF_INTERACTIONS):
+        theta_val+= LAMBDA_THETA* 0.5* (theta[t].transpose().dot(theta[t]))
+
+    log_likelihood = pair_sum + weight_val - theta_val
+    return log_likelihood
+
+
 def _normalize__by_columns(matrix: np.array):
     result = []
     for i in matrix.transpose():
@@ -357,8 +392,7 @@ def _normalize__by_columns(matrix: np.array):
     return np.array(result).transpose()
 
 
-a_matrix, y_matrix, similarity_matrix, pairs = load_data(
-    file='pairs_data.txt')
+a_matrix, y_matrix, similarity_matrix, pairs = load_data(file='pairs_data.txt')
 mu, sigma = 0.5, 0.5
 a_matrix = np.array(a_matrix)
 a_norm = _normalize__by_columns(a_matrix)
@@ -367,11 +401,16 @@ similarity_matrix = np.array(similarity_matrix)
 weight = np.ones(shape=W_MATRIX_SIZE)
 z = np.random.normal(mu, sigma, Z_MATRIX_SIZE)
 theta = np.random.normal(mu, sigma, THETA_MATRIX_SIZE)
-new_z, new_w, new_theta = learning_algorithm(sigma, weight, similarity_matrix, z, y_matrix, theta, a_norm)
-print("DONE")
-print("---------")
-print(new_z)
-print("---------")
-print(new_w)
-print("---------")
-print(new_theta)
+new_z = np.load('z.npy')
+new_w = np.load('w.npy')
+new_theta = np.load('theta.npy')
+# new_z, new_w, new_theta = learning_algorithm(sigma, weight, similarity_matrix, z, y_matrix, theta, a_norm)
+log = calculate_log_likelihood(s=similarity_matrix, w=new_w, theta=new_theta, z=new_z, y=y_matrix, a=a_matrix)
+print(log)
+# print("DONE")
+# print("---------")
+# print(new_z)
+# print("---------")
+# print(new_w)
+# print("---------")
+# print(new_theta)
