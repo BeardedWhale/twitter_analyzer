@@ -1,9 +1,11 @@
 import math
+import random
 
 import numpy as np
 import torch
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
+from torch import functional as F
 
 from training import _normalize__by_columns, W_MATRIX_SIZE, Z_MATRIX_SIZE, THETA_MATRIX_SIZE, \
     NUMBER_OF_PAIRS, VARIANCE, NUMBER_OF_INTERACTIONS, LAMBDA_W, LAMBDA_THETA, b, load_data, \
@@ -14,13 +16,17 @@ mu, sigma = 0.5, 0.5
 a_matrix = np.array(a_matrix)
 a_norm = _normalize__by_columns(a_matrix)
 y_matrix = np.array(y_matrix)
+pair_matrix_2 = np.array(pairs)
 similarity_matrix = np.array(similarity_matrix)
-weight = np.ones(shape=W_MATRIX_SIZE)
-z = np.random.normal(mu, sigma, Z_MATRIX_SIZE)
-theta = np.random.normal(mu, sigma, THETA_MATRIX_SIZE)
 
 
 cost_funct = 0
+
+def dropout(item, p):
+    if random.random() < p:
+        return 0
+    else:
+        return item
 
 def _get_sigmoid(pair_index: int, interaction_index: int, theta: np.array, z: np.array, a: np.array) -> float:
     z_i = z[pair_index]
@@ -73,19 +79,34 @@ def calculate_log_likelihood(s, w, theta, z, y, a)->int:
         log_likelihood-= LAMBDA_THETA* 0.5* theta_t_square.reshape(1)
 
     # log_likelihood = pair_sum + weight_val - theta_val
-    return log_likelihood
+    return -1.0 * log_likelihood
 
 
 
+w_loaded = Variable(torch.load('w_updated_pairs.pt'))
+z_loaded = Variable(torch.load('z_updated_pairs.pt'))
+theta_loaded = Variable(torch.load('theta_updated_pairs.pt'))
 
-w = Variable(torch.DoubleTensor(weight), requires_grad=True)
-z = Variable(torch.DoubleTensor(z), requires_grad=True)
-theta = Variable(torch.DoubleTensor(theta), requires_grad=True)
-optimizer = torch.optim.Adam([w, z ,theta], lr = 0.0001)
-w_optimizer = torch.optim.Adam([w], lr=0.001)
-z_optimizer = torch.optim.Adam([z], lr=0.01)
-theta_optimizer = torch.optim.Adam([theta], lr=0.00001)
-optimizer.zero_grad()
+p = 0.0001
+w_dropout = torch.tensor([dropout(w_loaded[i].item(), p) for i in range(w_loaded.shape[0])], dtype=torch.float64).reshape(w_loaded.shape)
+theta_dropout = torch.tensor(
+    [[dropout(theta_loaded[i][j].item(), p) for j in range(theta_loaded.shape[1])]for i in range(theta_loaded.shape[0])], dtype=torch.float64).reshape(theta_loaded.shape)
+z_dropout = torch.tensor([dropout(z_loaded[i].item(), p) for i in range(z_loaded.shape[0])], dtype=torch.float64).reshape(z_loaded.shape)
+
+THETA_ITER = 30
+W_ITER = 10
+Z_ITER = 10
+w = Variable(w_dropout, requires_grad=True)
+z = Variable(z_dropout, requires_grad=True)
+theta = Variable(theta_dropout, requires_grad=True)
+
+w_optimizer = torch.optim.Adam([w], lr=0.05)
+w_optimizer.zero_grad()
+z_optimizer = torch.optim.Adam([z], lr=0.001)
+z_optimizer.zero_grad()
+theta_optimizer = torch.optim.Adam([theta], lr=0.015)
+theta_optimizer.zero_grad()
+
 a = torch.tensor(a_matrix, dtype=torch.double)
 y = torch.tensor(y_matrix, dtype=torch.double)
 s = torch.tensor(similarity_matrix, dtype=torch.double)
@@ -94,22 +115,24 @@ weight_val = -0.5 * LAMBDA_W * (w_prod[0])
 LOG_LIKELIHOOD = torch.Tensor(1,1).normal_()
 LOG_LIKELIHOOD.requires_grad_(True)
 PREV_LOGLIKELIHOOD = None
-theta_diff = torch.Tensor([[1000000]])
-z_diff = torch.Tensor([[10000]])
-w_diff = torch.Tensor([[100000]])
+theta_diff = torch.tensor([[1000000]], dtype=torch.double)
+z_diff = torch.tensor([[10000]], dtype=torch.double)
+w_diff = torch.tensor([[100000]], dtype=torch.double)
 
 theta_diffs = []
 z_diffs = []
 w_diffs = []
-theta_converge = 10000
-z_converge = 5000
-w_converge = 5000
+theta_converge = 1000
+z_converge = 10
+w_converge = 10
 
 
-def draw_plot(theta_diffs, z_diffs, w_diffs, log):
+def draw_plot(theta_diffs, z_diffs, w_diffs, log, z):
     theta_x = np.arange(len(theta_diffs))
     z_x = np.arange(len(z_diffs))
     w_x = np.arange(len(w_diffs))
+    z_vals_first = [z[i].item() for i in range(z.shape[0])][:50]
+    z_vals_sec = [z[i].item() for i in range(z.shape[0])][50:100]
     print(theta_diffs)
     plt.plot(theta_x, theta_diffs, color = 'red', linestyle='solid')
     plt.plot(z_x, z_diffs, color = 'blue', linestyle='solid')
@@ -117,54 +140,100 @@ def draw_plot(theta_diffs, z_diffs, w_diffs, log):
     plt.show()
     plt.plot(np.arange(len(log)), log, color = 'black', linestyle='solid')
     plt.show()
+    similarity = [sum( similarity_matrix[i]) for i in range(similarity_matrix.shape[0])][:50]
+    similarity_2 = [sum( similarity_matrix[i]) for i in range(similarity_matrix.shape[0])][50:100]
+    interaction = [sum(y_matrix[i]) for i in range(y_matrix.shape[0])][:50]
+    interaction_2 = [sum(y_matrix[i]) for i in range(y_matrix.shape[0])][50:100]
+    auxiliary = [sum(a_matrix[i]) for i in range(a_matrix.shape[0])]
+    auxiliary = [auxiliary[i]/sum(auxiliary) for i in range(len(auxiliary))]
+    plt.plot(np.arange(len(similarity)), similarity, color='black', linestyle='solid')
+    plt.plot(np.arange(len(z_vals_first)), z_vals_first,  color='red', linestyle='solid')
+    plt.plot(np.arange(len(interaction)), interaction, color='green', linestyle='solid')
+    plt.plot(np.arange(len(auxiliary[:50])), auxiliary[:50], color='blue', linestyle='solid')
+    plt.show()
+    plt.plot(np.arange(len(similarity_2)), similarity_2, color='black', linestyle='solid')
+    plt.plot(np.arange(len(z_vals_sec)), z_vals_sec, color='red', linestyle='solid')
+    plt.plot(np.arange(len(interaction_2)), interaction_2, color='green', linestyle='solid')
+    plt.plot(np.arange(len(auxiliary[50:100])), auxiliary[50:100], color='blue', linestyle='solid')
+    plt.show()
+
 
 
 
 iterations = 10
 log_likelihoods = []
+prev_log_diff = torch.tensor([[0]], dtype=torch.double)
 
-for i in range(100):
+draw_plot(theta_diffs, z_diffs, w_diffs, log_likelihoods, z)
+
+for i in range(5):
     k = 0
     print('THETA UPDATE:')
-    while theta_diff > theta_converge or k < iterations+1:
+    while torch.abs(theta_diff) > theta_converge or k < iterations+1:
         LOG_LIKELIHOOD = calculate_log_likelihood(s, w, theta, z, y, a)
         log_likelihoods.append(LOG_LIKELIHOOD[0].item())
         LOG_LIKELIHOOD.backward()
         theta_optimizer.step()
         if not PREV_LOGLIKELIHOOD:
             PREV_LOGLIKELIHOOD = LOG_LIKELIHOOD
+            theta_diff = torch.Tensor([[0]])
         else:
-            theta_diff = torch.abs(PREV_LOGLIKELIHOOD - LOG_LIKELIHOOD)
+            log_diff = PREV_LOGLIKELIHOOD - LOG_LIKELIHOOD
+            theta_diff = prev_log_diff - log_diff
+            prev_log_diff = log_diff
+
             print(f'    diff_{k}: {theta_diff.item()}')
             theta_diffs.append(theta_diff.item())
 
         print(f'    LG {LOG_LIKELIHOOD}')
+        theta.grad.data.zero_()
         k+=1
+        if k>THETA_ITER: break
     k = 0
     print('Z UPDATE:')
-    while z_diff > z_converge or k < iterations:
+    while torch.abs(z_diff) > z_converge or k < iterations:
         LOG_LIKELIHOOD = calculate_log_likelihood(s, w, theta, z, y, a)
         log_likelihoods.append(LOG_LIKELIHOOD[0].item())
         LOG_LIKELIHOOD.backward()
         z_optimizer.step()
-        z_diff = torch.abs(PREV_LOGLIKELIHOOD - LOG_LIKELIHOOD)
-        z_diffs.append(z_diff.item())
+        log_diff = PREV_LOGLIKELIHOOD - LOG_LIKELIHOOD
+        z_diff = prev_log_diff - log_diff
+        prev_log_diff = log_diff
+        PREV_LOGLIKELIHOOD = LOG_LIKELIHOOD
+        if k !=0:
+            z_diffs.append(z_diff.item())
+        z.grad.data.zero_()
         print(f'    diff_{k}: {z_diff.item()}')
         print(f'    LG: {LOG_LIKELIHOOD}')
         k += 1
+        if k>Z_ITER: break
 
     k=0
     print('W UPDATE:')
-    while w_diff > w_converge or k<iterations:
+    while torch.abs(w_diff) > w_converge or k<iterations:
+        w_optimizer.zero_grad()
         LOG_LIKELIHOOD = calculate_log_likelihood(s, w, theta, z, y, a)
         log_likelihoods.append(LOG_LIKELIHOOD[0].item())
         LOG_LIKELIHOOD.backward()
         w_optimizer.step()
-        w_diff = torch.abs(PREV_LOGLIKELIHOOD - LOG_LIKELIHOOD)
-        w_diffs.append(w_diff.item())
+        log_diff = PREV_LOGLIKELIHOOD - LOG_LIKELIHOOD
+        w_diff = prev_log_diff - log_diff
+        prev_log_diff = log_diff
+        PREV_LOGLIKELIHOOD = LOG_LIKELIHOOD
+        if k!=0:
+            w_diffs.append(w_diff.item())
         print(f'    diff_{k}: {w_diff.item()}')
         print(f'    LG: {LOG_LIKELIHOOD}')
         k += 1
+        w.grad.data.zero_()
+        if k > W_ITER:
+            break
 
-    draw_plot(theta_diffs, z_diffs, w_diffs, log_likelihoods)
 
+
+
+    draw_plot(theta_diffs, z_diffs, w_diffs, log_likelihoods, z)
+
+    torch.save(w, 'w_updated_pairs.pt')
+    torch.save(theta, 'theta_updated_pairs.pt')
+    torch.save(z, 'z_updated_pairs.pt')
